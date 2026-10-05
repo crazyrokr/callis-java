@@ -1,0 +1,27 @@
+name: build-analyzer
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Build, test, static analysis, coverage
+        run: ./gradlew check
+
+      - name: Build Fat-JAR
+        run: ./gradlew shadowJar
+
+      - name: Sanity - Fat-JAR starts
+        run: java -jar build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar --help

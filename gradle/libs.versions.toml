@@ -1,0 +1,28 @@
+# Single source of truth for every dependency pin (see docs/adr/0001-architecture.md).
+[versions]
+jackson = "2.22.3"
+picocli = "4.7.7"
+mavenArtifact = "3.9.16"
+sootup = "3.0.1"
+spock = "2.4-groovy-4.0"
+groovy = "4.0.32"
+checkstyle = "10.4"
+jacoco = "0.8.15"
+spotbugs = "4.10.4"
+
+[libraries]
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+maven-artifact = { module = "org.apache.maven:maven-artifact", version.ref = "mavenArtifact" }
+sootup-core = { module = "org.soot-oss:sootup.core", version.ref = "sootup" }
+sootup-java-core = { module = "org.soot-oss:sootup.java.core", version.ref = "sootup" }
+sootup-bytecode-frontend = { module = "org.soot-oss:sootup.java.bytecode.frontend", version.ref = "sootup" }
+sootup-jimple-frontend = { module = "org.soot-oss:sootup.jimple.frontend", version.ref = "sootup" }
+sootup-callgraph = { module = "org.soot-oss:sootup.callgraph", version.ref = "sootup" }
+spock-core = { module = "org.spockframework:spock-core", version.ref = "spock" }
+groovy = { module = "org.apache.groovy:groovy", version.ref = "groovy" }
+groovy-bom = { module = "org.apache.groovy:groovy-bom", version.ref = "groovy" }
+spotbugs-tool = { module = "com.github.spotbugs:spotbugs", version.ref = "spotbugs" }
+
+[plugins]
+shadow = { id = "com.gradleup.shadow", version = "9.6.1" }

@@ -1,0 +1,192 @@
+# ADR 0001 — Architecture: Dependency Vulnerability Reachability Analyzer
+
+- **Status:** accepted (2026-10-05)
+- **Scope:** single shared record of all architectural decisions for this project.
+  Per project convention, later changes **amend this file in place** — no per-change ADRs.
+  Each amendment is appended to the [Amendments](#amendments) section.
+
+## Context
+
+The tool answers one question in CI: *"Is this vulnerability in the SBOM actually
+reachable from application code?"* Pipeline: CycloneDX SBOM + local OSV database →
+candidate vulnerabilities → SootUp call graph (entry points → app bytecode + library
+jars) → REACHABLE / UNREACHABLE verdicts with call traces → JSON + JUnit XML reports.
+Exit code 1 on any reachable vulnerability, 0 otherwise.
+
+**Capability boundary (drives A4):** OSV Maven records carry package-level
+`affected`/`ranges` data only — 0 of the 7,163 records in the current dump carry
+class/method signatures (verified 2026-10-05). Reachability is therefore
+artifact-level by default, with an optional `vuln-mappings.json` escape hatch for
+critical CVEs.
+
+**Bytecode support:** SootUp 3.0.1 (ASM 9.10.1) under a Java 25 runtime parses
+class files up to major version 69 (Java 25), verified 2026-10-05. For unsupported
+versions SootUp **silently** returns zero classes (verified: v69 under 2.0.0,
+hand-crafted v70 under 3.0.1) — hence the A12 startup guard and the
+`BytecodeCeilingSpec` regression fixture committed in M0.
+
+## Decisions
+
+### A1 — SootUp 3.0.1 over classic Soot / ASM-only
+
+Modern API, Jimple IR, maintained; CHA + RTA call graphs out of the box.
+`org.soot-oss` 3.0.1 modules are published on Maven Central (verified 2026-10-05 on
+repo1.maven.org; the Solr search index lags and still shows 2.0.0). Parses
+≤ Java 25 bytecode. All SootUp types are confined to `analysis/SootUpSetup.java`
+so an upgrade is a one-file diff (R4).
+
+### A2 — Fat-JAR via Shadow; GraalVM native deferred to M7
+
+Instant-start CI is nice-to-have, not v1. SootUp's reflective use may need
+native-image reflect config. If native is ever built, `org.graalvm.buildtools.native`
+is the first-class path.
+
+### A3 — Offline OSV via local directory + `download-osv.sh`
+
+Air-gapped requirement. The GCS `Maven/all.zip` is ~10.3 MB (verified 2026-10-05,
+daily refresh), so CI download is cheap; a corporate Nexus/Artifactory cache is an
+ops option, not an app dependency. `--osv-dir` is the only contract (R7).
+
+### A4 — Artifact-level reachability default; class/method-level via mapping file
+
+OSV has no method data for Maven (capability boundary above). The default verdict
+must not overpromise precision; `vuln-mappings.json` (vuln id → classes/methods)
+gives the escape hatch. Documented as the #1 precision limitation (R1) in the README.
+
+### A5 — RTA default, CHA flag `--cha`
+
+RTA (`RapidTypeAnalysisAlgorithm`) prunes to the set reachable from entry points →
+fewer false positives from dead code; CHA (`ClassHierarchyAnalysisAlgorithm`) is the
+cheaper fallback. Pointer-analysis (Heros IFDS) precision is M7 stretch.
+
+### A6 — Entry points: `main()` + annotation-driven + `--entry-points` override
+
+`main(String[])` in **app classes only** (never library mains), plus bytecode-level
+annotation scan for the frameworks in the spec: Spring controllers/handlers,
+`@Scheduled`, JMS/Kafka/Rabbit listeners, `@WebServlet`/`doGet`/`doPost`, Quartz
+`execute()`. Annotations are read from bytecode — no framework classpath needed.
+An explicit `--entry-points class#method` list wins over auto-detection.
+
+### A7 — Classpath scope = resolved dependency set (not `~/.m2/repository`)
+
+For a Maven target: `mvn dependency:build-classpath -Dmdep.outputFile=cp.txt`;
+for Gradle: a small custom task writing `cp.txt`. These commands run in the
+*analyzed* project only. A GBs-sized, jar-irrelevant `~/.m2/repository` classpath
+would slow the call graph down and is a precision hazard (R2).
+
+### A8 — Exit codes: 0 / 1 / 2 / 3
+
+`0` = no reachable vulns; `1` = ≥1 REACHABLE (fail the pipeline); `2` =
+usage/config error; `3` = analysis/runtime failure. 2 vs 3 lets CI distinguish a
+broken invocation from an analyzer crash. Wired through a single `CliResult`
+enum — no scattered `System.exit`.
+
+### A9 — Reports: JSON + JUnit XML
+
+Per plan Phase 5. One `<testcase>` per vulnerability; REACHABLE ⇒ `<failure>`
+with the call trace, UNREACHABLE ⇒ pass (badges fail exactly when the pipeline
+must fail).
+
+### A10 — Single Gradle project for v1
+
+Split `core`/`cli` (and add Gradle/Maven plugins) only when a library consumer
+appears — that split is the M7 trigger for plugin work.
+
+### A11 — Spock (Groovy 4) as the test framework
+
+Spock's `given:/when:/then:` is the mandated test structure as a language
+construct; built-in assertions replace AssertJ (one assertion style across the
+codebase); `where:` data tables make the M2 edge-case matrix one table per case
+family; `Mock()`/`Stub()` are built-in (no Mockito). Production code stays 100%
+Java; Groovy lives only under `src/test/groovy`.
+
+### A12 — Java 25 LTS runtime; target-bytecode ceiling = Java 25
+
+Verified 2026-10-05: Gradle 9.x supports Java 25 (≥ 9.1.0); Spock + Groovy 4.0.32
+pass under 25; SootUp 3.0.1 runs under 25 and parses v69 class files. SootUp
+**silently returns an empty class list** for bytecode versions it does not handle
+(verified: v69 under 2.0.0; hand-crafted v70 under 3.0.1) — without a guard, a
+target built with newer bytecode would pass with zero findings (false negative).
+M3 keeps a startup guard: probe max class-file major version + zero-classes-from-
+non-empty-directory check → **exit 3** beyond the supported ceiling. Regression
+fixtures (`fixtures/bytecode/v69`, `fixtures/bytecode/v70`) committed in M0.
+
+### A13 — Bounded callback-interface entry points
+
+Enterprise code reaches vulnerable code via framework callbacks (Servlet `Filter`,
+Quartz `Job`, Spring `ApplicationListener`, JMS listeners) that no annotation scan
+catches. App classes implementing a curated, user-extensible list
+(`--callback-interfaces`) become entry points; `JavaSootClass.getInterfaces()`
+verified in SootUp 3.0.1. The "all interface implementations" variant is rejected:
+it would admit every business interface, inflating entry points and collapsing RTA
+precision (more false positives for a security gate).
+
+### A14 — OSV snapshot pinning + fail-safe parsing + classpath NOTICE
+
+TLS covers transit integrity; the enterprise need is reproducibility:
+`download-osv.sh` writes an `osv-maven.sha256` pin, the analyzer records the sha256
+in report metadata, optional `--osv-checksum` verifies. Robustness: malformed
+records skipped with a count; **zero valid records → exit 3**; `withdrawn`
+records (113 in the current dump) are never indexed. The report carries
+`onClasspath` + a reflection/dynamic-dispatch NOTICE for UNREACHABLE-but-present
+artifacts — closes the "quick win" without any method-data dependency.
+
+### A15 — SBOM-format agnosticism via `SbomParser`
+
+CycloneDX now (interface + auto-detect from `bomFormat` vs `spdxVersion`);
+SPDX **JSON** in M7; SPDX XML excluded from v1. Enterprises split between the two
+formats; the interface makes each new format one class.
+
+### A16 — Caching & parallelism deferred, benchmark-gated
+
+SootUp 3.0.1 caches are in-memory only (no call-graph serialization API) and
+`GraphBasedCallGraph` is not thread-safe. Full-CG disk caching rejected for v1:
+app classes change every commit, so the cache key almost always misses in CI.
+JAR-level SHA-256 parse cache and snapshot-based parallel path-finding are M7
+stretch items, implemented only if an M4 benchmark on a medium real project shows
+parse/path work dominates.
+
+## Corrections to plan.md (recorded for traceability)
+
+- **SootUp 3.0.1** is published on Maven Central (verified on repo1.maven.org
+  2026-10-05; the Solr search index lags and still reports 2.0.0). Supersedes any
+  "wait for 3.x" caveat; raises the target-bytecode ceiling to Java 25 (A12).
+- Build system: **Gradle 9.8.0 + Shadow** (not Maven/shade). All other decisions
+  (SootUp, Jackson, picocli, offline OSV) unaffected; `maven-artifact` is a
+  *library* dependency (`ComparableVersion`), not a build coupling.
+- CycloneDX plugin **2.9.1**, not 2.8.0.
+- `--classpath=~/.m2/repository` replaced by resolved classpath file (A7/R2).
+- OSV all.zip is ~10 MB and daily-refreshed — direct CI download is viable;
+  corporate cache optional.
+- plan.md step 4.1 "extract affected class and method signatures from the database
+  records" is not generally possible for Maven — replaced by A4.
+
+## Amendments
+
+- **2026-10-05 (M0 verification):** plan pin `Shadow 9.0.0-beta12` → **Shadow
+  9.6.1** (9.0.0 GA and later stable 9.x releases exist on Central; T05 asked to
+  re-check GA availability — done, latest stable preferred).
+- **2026-10-05 (M0 verification):** plan pin `Spock 2.3-groovy-4.0` → **Spock
+  2.4-groovy-4.0** (2.4 GA released; plan said "re-check at M0" — done). Groovy
+  stays on the 4.0 line (4.0.32) per A11.
+- **2026-10-05 (M0 verification):** other pins resolved — Jackson 2.22.3,
+  picocli 4.7.7, maven-artifact 3.9.16, Checkstyle 10.4, JaCoCo 0.8.15, Gradle
+  wrapper 9.8.0, runtime JDK 25.0.3 Temurin. All recorded in
+  `gradle/libs.versions.toml` (single source of truth).
+- **2026-10-05 (M0 verification):** the `com.diffplug.spotbugs` Gradle plugin is
+  no longer published (absent from the plugin portal and Central in this
+  timeline). Static analysis runs the current SpotBugs tool
+  `com.github.spotbugs:spotbugs` **4.10.4** (chosen over 4.9.x because its ASM
+  9.10.1 parses Java 25 class files) via a `spotbugsMain` `JavaExec` task with
+  `-exitcode` so findings fail the build (verified with a planted
+  `NP_ALWAYS_NULL` bug). Wired into `check`.
+- **2026-10-05 (M0 verification):** SootUp **3.0.1 repackaged its API** —
+  `org.sootup.*` is gone; core lives under `sootup.core.*` (e.g.
+  `sootup.core.model.SootClass`, `sootup.core.types.ClassType`), the Java view
+  under `sootup.java.core.views.JavaView` (constructor takes
+  `AnalysisInputLocation` directly; `getClasses()` returns a `Stream`), the
+  classpath location under
+  `sootup.java.bytecode.frontend.inputlocation.JavaClassPathAnalysisInputLocation`,
+  and the algorithms under `sootup.callgraph` (`RapidTypeAnalysisAlgorithm` /
+  `ClassHierarchyAnalysisAlgorithm`, `initialize(List<MethodSignature>)`).
+  All M3 code targets this 3.x surface.
