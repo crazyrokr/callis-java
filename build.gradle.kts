@@ -1,7 +1,3 @@
-import java.math.BigDecimal
-import org.gradle.kotlin.dsl.withGroovyBuilder
-import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
-
 plugins {
     java
     application
@@ -106,33 +102,53 @@ jacoco {
     toolVersion = libs.versions.jacoco.get()
 }
 
-// Coverage gates (plan section 6): osv/ and report/ at 100% line, analysis/ at >= 90% branch.
-// The JaCoCo rules DSL lives in the workers jar, so the rules are configured dynamically.
-tasks.withType<JacocoCoverageVerification> {
-    withGroovyBuilder {
-        "violationRules"({
-            "rule"({
-                "setElement"("PACKAGE")
-                "setIncludes"(listOf("org.reachability.analyzer.osv", "org.reachability.analyzer.report"))
-                "limit"({
-                    "setCounter"("LINE")
-                    "setValue"("COVEREDRATIO")
-                    "setMinimum"(BigDecimal.ONE)
-                })
-            })
-            "rule"({
-                "setElement"("PACKAGE")
-                "setIncludes"(listOf("org.reachability.analyzer.analysis"))
-                "limit"({
-                    "setCounter"("BRANCH")
-                    "setValue"("COVEREDRATIO")
-                    "setMinimum"(BigDecimal("0.90"))
-                })
-            })
-        })
+// Coverage gate tool: evaluates JaCoCo execution data against the plan's gates
+// (section 6). Replaces jacocoTestCoverageVerification, whose ant worker in
+// Gradle 9.x evaluates empty execution data and passes vacuously (ADR 0001 amendment).
+val coveragetool: SourceSet = sourceSets.create("coveragetool") {
+    java.srcDir("src/coveragetool/java")
+}
+
+dependencies {
+    "coveragetoolImplementation"("org.jacoco:org.jacoco.core:${libs.versions.jacoco.get()}")
+    testImplementation(coveragetool.output)
+    testImplementation("org.jacoco:org.jacoco.core:${libs.versions.jacoco.get()}")
+}
+
+// The specs in this task read the execution data of the main test task, so they
+// must run after it (the agent writes the exec file when the test JVM exits).
+val coverageGateTest by tasks.creating(Test::class) {
+    description = "Runs CoverageGateSpec against the execution data of :test"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    include("org/reachability/coveragetool/**")
+    dependsOn("test")
+}
+
+tasks.named<Test>("test") {
+    exclude("org/reachability/coveragetool/**")
+}
+
+val coverageGate by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Enforces the plan's coverage gates (sbom/osv/report 100% line, analysis 90% branch)"
+    dependsOn("test", tasks.named("compileCoveragetoolJava"))
+    classpath = coveragetool.runtimeClasspath
+    mainClass = "org.reachability.coveragetool.CoverageGate"
+    val gateArgs = mutableListOf(
+        "--exec", layout.buildDirectory.file("jacoco/test.exec").get().asFile.absolutePath
+    )
+    for (dir in sourceSets.main.get().output.classesDirs) {
+        gateArgs.add("--classes")
+        gateArgs.add(dir.absolutePath)
     }
+    gateArgs.add("--gate"); gateArgs.add("org.reachability.analyzer.sbom:LINE:1.0")
+    gateArgs.add("--gate"); gateArgs.add("org.reachability.analyzer.osv:LINE:1.0")
+    gateArgs.add("--gate"); gateArgs.add("org.reachability.analyzer.report:LINE:1.0")
+    gateArgs.add("--gate"); gateArgs.add("org.reachability.analyzer.analysis:BRANCH:0.90")
+    args(*gateArgs.toTypedArray())
 }
 
 tasks.named("check") {
-    dependsOn("jacocoTestCoverageVerification")
+    dependsOn("coverageGate", "coverageGateTest")
 }
