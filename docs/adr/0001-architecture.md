@@ -209,3 +209,50 @@ parse/path work dominates.
   after `test`, since the agent writes the exec file on test-JVM exit) covers
   the tool, including the false-positive guard "no data ≠ passing". The
   `jacoco` plugin stays applied for the test agent and `jacocoTestReport`.
+- **2026-10-06 (M2 verification):** OSV record parsing is **strict** — a
+  record whose shape deviates from the OSV schema (non-object root, missing /
+  non-text id, affected not a non-empty array, entry without a package name,
+  range without an events array, event without exactly one of
+  introduced/fixed/last_affected, non-text event version) throws
+  `OsvFormatException`, which the repository converts to a warn + skip +
+  count (T21b). Two invariants verified against the current dump: 0 of 7,163
+  records are malformed, and 113 are `withdrawn` — withdrawn records are
+  **never indexed** (counted separately, `indexedRecordCount =
+  validRecordCount − withdrawnCount`).
+- **2026-10-06 (M2 verification):** **name-key indexing** (refines A14): every
+  affected entry is indexed under every name form of its package — the raw
+  `group:artifact` name and its purl form `group/artifact` (5,471 of 5,674
+  entries in the dump are `group:artifact`, 203 plain). A component purl
+  queries under its `group:name` qualified name and its `group/name` form; a
+  purl **without** a namespace queries its plain name only, so it never
+  matches a group-qualified record of the same artifact name (false-positive
+  guard, tested).
+- **2026-10-06 (M2 verification):** **version-range semantics** (pure engine
+  `VersionRangeMatcher`, Maven `ComparableVersion` ordering): `introduced`
+  inclusive, `fixed` exclusive, `last_affected` inclusive; ranges OR; a range
+  without events matches nothing (a security gate must not guess); the
+  explicit `versions` list is exact string membership. A version **equal to
+  `fixed` is not affected** (plan false-positive guard, tested: log4j-core
+  2.15.0 → no candidate, 2.14.1 → candidate). The
+  `database_specific.last_known_affected_version_range` hint is normalized
+  only when the entry has no `fixed` event anywhere: `<= N` → inclusive
+  `last_affected N`, `< N` → exclusive `fixed N` (the dump uses only those
+  two shapes — 2,394 and 172 entries); an unparseable hint leaves the record
+  unchanged.
+- **2026-10-06 (M2 verification):** the **snapshot checksum** (A14) is the
+  sha256 over the sorted `name + ":" + hexSha256(file) + "\n"` concatenation
+  of all `*.json` files in the directory (order-independent, stable across
+  re-extraction); `--osv-checksum <sha256>` verifies it and `--dry-run-match`
+  prints the candidate table without bytecode analysis. A non-empty OSV
+  directory yielding **zero valid records is the fail-safe** the CLI maps to
+  exit 3 (A14/A8).
+- **2026-10-06 (M2 verification):** `CoverageGate` gained `--exclude <class>`:
+  a class the JaCoCo agent does not instrument (or whose lines cannot be
+  covered — e.g. `SnapshotChecksum`'s `NoSuchAlgorithmException` catch,
+  unreachable because SHA-256 is a mandated JCA algorithm) is dropped from
+  the analyzed class files, i.e. from **both** numerator and denominator.
+  The exclusion must happen in the gate, where the class files are read:
+  agent-level `excludes` only suppresses execution data, so the gate's
+  `Analyzer` still sees the class file and counts its lines as uncovered
+  (verified: 256/258 → 239/239 after the fix). `SnapshotChecksumSpec` pins
+  the algorithm instead.

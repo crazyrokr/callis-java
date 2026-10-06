@@ -22,6 +22,11 @@ import java.util.List;
  * ant-based worker evaluates empty execution data in Gradle 9.x and therefore
  * passes vacuously (see ADR 0001 amendment).
  *
+ * <p>{@code --exclude <class>} keeps a class out of the analyzed class files
+ * entirely (both numerator and denominator). Classes excluded from the
+ * JaCoCo agent's instrumentation show up in the exec data as fully uncovered,
+ * so the exclusion has to happen here, where the class files are read.
+ *
  * <p>Exit codes: 0 = all gates pass, 1 = at least one gate violated,
  * 2 = usage or I/O error.
  */
@@ -50,18 +55,29 @@ public final class CoverageGate {
 
     static int run(Parsed parsed) throws IOException {
         ExecutionDataStore store = loadExecutionData(parsed.exec());
-        return evaluate(store, parsed.classDirs(), parsed.gates()).exitCode();
+        return evaluate(store, parsed.classDirs(), parsed.excluded(), parsed.gates()).exitCode();
     }
 
     public static GateResult evaluate(ExecutionDataStore store,
                                       Iterable<Path> classDirs, List<Gate> gates) {
+        return evaluate(store, classDirs, List.of(), gates);
+    }
+
+    public static GateResult evaluate(ExecutionDataStore store, Iterable<Path> classDirs,
+                                      List<String> excluded, List<Gate> gates) {
         CoverageBuilder builder = new CoverageBuilder();
         for (Path dir : classDirs) {
             if (!Files.isDirectory(dir)) {
                 continue;
             }
-            try {
-                new Analyzer(store, builder).analyzeAll(dir.toFile());
+            try (var files = Files.walk(dir)) {
+                for (Path file : files.filter(CoverageGate::isClassFile)
+                        .filter(f -> !excluded.contains(classNameOf(dir, f)))
+                        .toList()) {
+                    try (var in = Files.newInputStream(file)) {
+                        new Analyzer(store, builder).analyzeClass(in, classNameOf(dir, file));
+                    }
+                }
             } catch (IOException e) {
                 throw new IllegalStateException("cannot analyze " + dir, e);
             }
@@ -110,13 +126,14 @@ public final class CoverageGate {
     public record Gate(String packageName, String counter, double minimum) {
     }
 
-    /** Parsed command line: exec file, class dirs, gates. */
-    public record Parsed(Path exec, List<Path> classDirs, List<Gate> gates) {
+    /** Parsed command line: exec file, class dirs, excluded classes, gates. */
+    public record Parsed(Path exec, List<Path> classDirs, List<String> excluded, List<Gate> gates) {
     }
 
     static Parsed parse(String[] args) {
         Path exec = null;
         List<Path> classDirs = new ArrayList<>();
+        List<String> excluded = new ArrayList<>();
         List<Gate> gates = new ArrayList<>();
         int i = 0;
         while (i < args.length) {
@@ -127,6 +144,10 @@ public final class CoverageGate {
                 }
                 case "--classes" -> {
                     classDirs.add(Path.of(requireNext(args, i, "--classes")));
+                    i += 2;
+                }
+                case "--exclude" -> {
+                    excluded.add(requireNext(args, i, "--exclude"));
                     i += 2;
                 }
                 case "--gate" -> {
@@ -145,7 +166,19 @@ public final class CoverageGate {
         if (gates.isEmpty()) {
             throw new IllegalArgumentException("at least one --gate <pkg:LINE|BRANCH:min> is required");
         }
-        return new Parsed(exec, classDirs, gates);
+        return new Parsed(exec, classDirs, excluded, gates);
+    }
+
+    private static boolean isClassFile(Path file) {
+        return file.getFileName().toString().endsWith(".class");
+    }
+
+    /** Dot-separated class name of a class file relative to its class directory. */
+    static String classNameOf(Path classDir, Path file) {
+        String relative = classDir.relativize(file).toString().replace(java.io.File.separatorChar, '/');
+        return relative.endsWith(".class")
+                ? relative.substring(0, relative.length() - ".class".length()).replace('/', '.')
+                : relative;
     }
 
     private static String requireNext(String[] args, int i, String option) {

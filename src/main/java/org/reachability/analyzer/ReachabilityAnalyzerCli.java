@@ -1,5 +1,9 @@
 package org.reachability.analyzer;
 
+import org.reachability.analyzer.osv.OsvRepository;
+import org.reachability.analyzer.osv.SnapshotChecksum;
+import org.reachability.analyzer.osv.VulnerabilityCandidate;
+import org.reachability.analyzer.osv.VulnerabilityCandidates;
 import org.reachability.analyzer.sbom.ParsedSbom;
 import org.reachability.analyzer.sbom.SbomComponent;
 import org.reachability.analyzer.sbom.SbomFormatException;
@@ -68,6 +72,15 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
             description = "Parse the SBOM, print the component table, and exit.")
     boolean dryRunSbom;
 
+    @Option(names = "--dry-run-match", hidden = true,
+            description = "Match the SBOM against --osv-dir, print vulnerability candidates, and exit.")
+    boolean dryRunMatch;
+
+    @Option(names = "--osv-checksum",
+            description = "Expected sha256 of the OSV snapshot directory (A14 pinning); "
+                    + "a mismatch fails with exit 2.")
+    String osvChecksum;
+
     public static void main(String[] args) {
         System.exit(new CommandLine(new ReachabilityAnalyzerCli()).execute(args));
     }
@@ -77,8 +90,11 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
         if (dryRunSbom) {
             return dryRunSbom();
         }
+        if (dryRunMatch) {
+            return dryRunMatch();
+        }
         System.out.println("reachability-analyzer: analysis pipeline not wired yet "
-                + "(M1 skeleton build). Use --dry-run-sbom or wait for M2-M6.");
+                + "(M1 skeleton build). Use --dry-run-sbom or wait for M3-M6.");
         return CliResult.USAGE_ERROR.exitCode();
     }
 
@@ -87,22 +103,130 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
             System.err.println("ERROR: --dry-run-sbom requires --sbom <file>");
             return CliResult.USAGE_ERROR.exitCode();
         }
-        ParsedSbom parsed;
-        try {
-            parsed = SbomReader.parse(sbom);
-        } catch (SbomFormatException e) {
-            System.err.println("ERROR: " + e.getMessage());
-            return CliResult.USAGE_ERROR.exitCode();
-        } catch (IOException e) {
-            System.err.println("ERROR: cannot read SBOM file: " + e.getMessage());
+        ParsedSbom parsed = loadSbom();
+        if (parsed == null) {
             return CliResult.USAGE_ERROR.exitCode();
         }
-
         for (String warning : parsed.getWarnings()) {
             System.err.println("WARNING: " + warning);
         }
         printComponentTable(parsed.getComponents());
         return CliResult.OK.exitCode();
+    }
+
+    /**
+     * M2 T24: SBOM + OSV snapshot, print the vulnerability candidates,
+     * exit 0. The SootUp pipeline (M3+) continues where this stops.
+     */
+    private int dryRunMatch() {
+        if (sbom == null) {
+            System.err.println("ERROR: --dry-run-match requires --sbom <file>");
+            return CliResult.USAGE_ERROR.exitCode();
+        }
+        if (osvDir == null) {
+            System.err.println("ERROR: --dry-run-match requires --osv-dir <dir>");
+            return CliResult.USAGE_ERROR.exitCode();
+        }
+        ParsedSbom parsed = loadSbom();
+        if (parsed == null) {
+            return CliResult.USAGE_ERROR.exitCode();
+        }
+
+        OsvRepository repository;
+        try {
+            repository = new OsvRepository(osvDir);
+        } catch (IOException e) {
+            System.err.println("ERROR: cannot read OSV directory: " + e.getMessage());
+            return CliResult.USAGE_ERROR.exitCode();
+        }
+        for (String warning : repository.warnings()) {
+            System.err.println("WARNING: " + warning);
+        }
+
+        if (osvChecksum != null) {
+            String actual;
+            try {
+                actual = SnapshotChecksum.sha256OfDirectory(osvDir);
+            } catch (IOException e) {
+                System.err.println("ERROR: cannot hash OSV directory: " + e.getMessage());
+                return CliResult.USAGE_ERROR.exitCode();
+            }
+            if (!actual.equals(osvChecksum)) {
+                System.err.println("ERROR: OSV snapshot checksum mismatch: expected "
+                        + osvChecksum + ", found " + actual);
+                return CliResult.USAGE_ERROR.exitCode();
+            }
+        }
+
+        if (repository.fileCount() > 0 && repository.validRecordCount() == 0) {
+            System.err.println("ERROR: OSV directory contains " + repository.fileCount()
+                    + " record file(s) but zero valid records; refusing to pass silently");
+            return CliResult.ANALYSIS_FAILURE.exitCode();
+        }
+
+        for (String warning : parsed.getWarnings()) {
+            System.err.println("WARNING: " + warning);
+        }
+        printCandidateTable(VulnerabilityCandidates.collect(parsed, repository));
+        return CliResult.OK.exitCode();
+    }
+
+    private ParsedSbom loadSbom() {
+        try {
+            return SbomReader.parse(sbom);
+        } catch (SbomFormatException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            return null;
+        } catch (IOException e) {
+            System.err.println("ERROR: cannot read SBOM file: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private void printCandidateTable(List<VulnerabilityCandidate> candidates) {
+        if (candidates.isEmpty()) {
+            System.out.println("No vulnerability candidates: SBOM components do not match any OSV record.");
+            return;
+        }
+        String[] header = {"VULN ID", "ALIASES", "COMPONENT", "VERSION", "MATCHED NAME", "MATCHED BY"};
+        List<String[]> rows = new ArrayList<>();
+        for (VulnerabilityCandidate c : candidates) {
+            rows.add(new String[]{
+                    c.vulnId(),
+                    String.join(", ", c.aliases()),
+                    c.componentName(),
+                    c.componentVersion(),
+                    c.matchedName(),
+                    String.join("; ", c.matchedBy())});
+        }
+        int[] widths = columnWidths(header, rows);
+        System.out.printf(format(widths), header);
+        for (String[] row : rows) {
+            System.out.printf(format(widths), row);
+        }
+        System.out.println(candidates.size() + " candidate(s)");
+    }
+
+    private int[] columnWidths(String[] header, List<String[]> rows) {
+        int[] widths = new int[header.length];
+        for (int i = 0; i < header.length; i++) {
+            widths[i] = header[i].length();
+        }
+        for (String[] row : rows) {
+            for (int i = 0; i < widths.length; i++) {
+                widths[i] = Math.max(widths[i], row[i].length());
+            }
+        }
+        return widths;
+    }
+
+    private String format(int[] widths) {
+        StringBuilder format = new StringBuilder();
+        for (int width : widths) {
+            format.append("%-").append(width).append("s  ");
+        }
+        format.append("%n");
+        return format.toString();
     }
 
     private void printComponentTable(List<SbomComponent> components) {

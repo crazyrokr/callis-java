@@ -1,0 +1,5 @@
+# OSV snapshot the fixture records were pulled from (A14 pinning).
+# 706a54025735570b05aefe8f64a807dff1288e873b92bfa5efd1fc78fcbb3c12  osv-maven-all.zip
+# Snapshot of https://osv-vulnerabilities.googleapis.com/v1/database/Maven/all.zip
+# downloaded 2026-10-05 (7,163 records); fixtures are verbatim copies of
+# individual records from that snapshot.

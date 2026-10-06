@@ -18,6 +18,8 @@ class CoverageGateSpec extends Specification {
     static final Path EXEC_FILE = Path.of("build/jacoco/test.exec")
     static final Path CLASSES_DIR = Path.of("build/classes/java/main")
     static final String SBOM = "org.reachability.analyzer.sbom"
+    static final String OSV = "org.reachability.analyzer.osv"
+    static final String UNREACHABLE_CLASS = "org.reachability.analyzer.osv.SnapshotChecksum"
 
     static ExecutionDataStore realStore() {
         CoverageGate.loadExecutionData(EXEC_FILE)
@@ -116,6 +118,30 @@ class CoverageGateSpec extends Specification {
         result.exitCode == 1
         result.report.contains("BRANCH")
         result.report.contains("VIOLATION")
+    }
+
+    def "given an excluded class that misses lines when gated at 100% then the exclusion flips the result"() {
+        given: "SnapshotChecksum's catch is unreachable, so the package is below 100% without the exclusion"
+        def store = realStore()
+        def gate = new Gate(OSV, "LINE", 1.0)
+
+        when:
+        def without = CoverageGate.evaluate(store, classDirs(), [gate])
+        def with = CoverageGate.evaluate(store, classDirs(), [UNREACHABLE_CLASS], [gate])
+
+        then: "the excluded class drops out of the denominator (false-positive guard: the result must actually change)"
+        without.exitCode == 1
+        with.exitCode == 0
+    }
+
+    def "given an exclusion matching no class when evaluated then the result is unchanged"() {
+        given:
+        def store = realStore()
+        def gate = new Gate(SBOM, "LINE", 0.0)
+
+        expect:
+        CoverageGate.evaluate(store, classDirs(), [gate]).exitCode ==
+                CoverageGate.evaluate(store, classDirs(), ["org.reachability.analyzer.doesnotexist"], [gate]).exitCode
     }
 
     def "given a package without main classes when gated then it is skipped and passes"() {
@@ -259,12 +285,39 @@ class CoverageGateSpec extends Specification {
         when:
         Parsed parsed = CoverageGate.parse((["--exec", EXEC_FILE.toString(),
                                             "--classes", CLASSES_DIR.toString(),
+                                            "--exclude", UNREACHABLE_CLASS,
                                             "--gate", "$SBOM:LINE:0.5",
-                                            "--gate", "$SBOM:BRANCH:0.4"]) as String[])
+                                            "--gate", "$SBOM:BRANCH:0.4"] as String[]))
 
         then:
         parsed.exec == EXEC_FILE
         parsed.classDirs == [CLASSES_DIR]
+        parsed.excluded == [UNREACHABLE_CLASS]
         parsed.gates.size() == 2
+    }
+
+    def "given a repeated exclude option when parsed then every class is captured"() {
+        when:
+        Parsed parsed = CoverageGate.parse((["--exec", EXEC_FILE.toString(),
+                                            "--classes", CLASSES_DIR.toString(),
+                                            "--exclude", "org.a.B",
+                                            "--exclude", "org.a.C",
+                                            "--gate", "$SBOM:LINE:0.5"] as String[]))
+
+        then:
+        parsed.excluded == ["org.a.B", "org.a.C"]
+        parsed.gates.size() == 1
+    }
+
+    def "given an exclude option without a value when parsed then IllegalArgumentException"() {
+        when:
+        CoverageGate.parse((["--exec", EXEC_FILE.toString(),
+                            "--classes", CLASSES_DIR.toString(),
+                            "--gate", "$SBOM:LINE:0.5",
+                            "--exclude"] as String[]))
+
+        then:
+        def e = thrown(IllegalArgumentException)
+        e.message.contains("--exclude")
     }
 }

@@ -1,11 +1,15 @@
 package org.reachability.analyzer
 
+import org.reachability.analyzer.osv.SnapshotChecksum
 import picocli.CommandLine
 import spock.lang.Specification
 
+import java.nio.file.Path
+
 /**
- * CLI contract (M1 T11): help/version, exit-code contract A8, and the
- * --dry-run-sbom debug mode. Replaces the M0 SmokeSpec.
+ * CLI contract (M1 T11, M2 T24): help/version, exit-code contract A8,
+ * the --dry-run-sbom debug mode, and the --dry-run-match candidate mode.
+ * Replaces the M0 SmokeSpec.
  */
 class CliSpec extends Specification {
 
@@ -103,5 +107,106 @@ class CliSpec extends Specification {
         then:
         exitCode == CliResult.USAGE_ERROR.exitCode
         capturedErr.toString().contains("SPDX")
+    }
+
+    def "given dry-run-match with the fixture sbom and osv records when executed then the log4shell candidate is printed and exit zero"() {
+        when:
+        int exitCode = runCli("--dry-run-match",
+                "--sbom", "src/test/resources/fixtures/bom.json",
+                "--osv-dir", "src/test/resources/fixtures/osv")
+
+        then:
+        exitCode == CliResult.OK.exitCode
+        def out = capturedOut.toString()
+        out.contains("GHSA-jfh8-c2jp-5v3q")
+        out.contains("CVE-2021-44228")
+        out.contains("log4j-core")
+        out.contains("2.14.1")
+        out.contains("org.apache.logging.log4j:log4j-core")
+    }
+
+    def "given dry-run-match without the osv-dir option when executed then exit usage error"() {
+        when:
+        int exitCode = runCli("--dry-run-match", "--sbom", "src/test/resources/fixtures/bom.json")
+
+        then:
+        exitCode == CliResult.USAGE_ERROR.exitCode
+        capturedErr.toString().contains("--osv-dir")
+    }
+
+    def "given dry-run-match without the sbom option when executed then exit usage error"() {
+        when:
+        int exitCode = runCli("--dry-run-match", "--osv-dir", "src/test/resources/fixtures/osv")
+
+        then:
+        exitCode == CliResult.USAGE_ERROR.exitCode
+        capturedErr.toString().contains("--sbom")
+    }
+
+    def "given dry-run-match with a non-existent osv directory when executed then exit usage error"() {
+        when:
+        int exitCode = runCli("--dry-run-match",
+                "--sbom", "src/test/resources/fixtures/bom.json",
+                "--osv-dir", "build/no-such-osv-dir")
+
+        then:
+        exitCode == CliResult.USAGE_ERROR.exitCode
+        capturedErr.toString().contains("cannot read OSV directory")
+    }
+
+    def "given dry-run-match with an empty osv directory when executed then no candidates and exit zero"() {
+        given:
+        File emptyDir = new File("build/tmp/osv-empty").toPath().toFile()
+        emptyDir.mkdirs()
+
+        when:
+        int exitCode = runCli("--dry-run-match",
+                "--sbom", "src/test/resources/fixtures/bom.json",
+                "--osv-dir", emptyDir.absolutePath)
+
+        then:
+        exitCode == CliResult.OK.exitCode
+        capturedOut.toString().contains("No vulnerability candidates")
+    }
+
+    def "given dry-run-match with a non-empty directory of malformed records when executed then exit analysis failure (fail-safe)"() {
+        given:
+        File corruptDir = new File("build/tmp/osv-corrupt").toPath().toFile()
+        corruptDir.mkdirs()
+        new File(corruptDir, "corrupt.json").text = "not a json record"
+
+        when:
+        int exitCode = runCli("--dry-run-match",
+                "--sbom", "src/test/resources/fixtures/bom.json",
+                "--osv-dir", corruptDir.absolutePath)
+
+        then:
+        exitCode == CliResult.ANALYSIS_FAILURE.exitCode
+        capturedErr.toString().contains("zero valid records")
+    }
+
+    def "given dry-run-match with a wrong osv-checksum when executed then exit usage error naming both values"() {
+        when:
+        int exitCode = runCli("--dry-run-match",
+                "--sbom", "src/test/resources/fixtures/bom.json",
+                "--osv-dir", "src/test/resources/fixtures/osv",
+                "--osv-checksum", "0000000000000000000000000000000000000000000000000000000000000000")
+
+        then:
+        exitCode == CliResult.USAGE_ERROR.exitCode
+        def err = capturedErr.toString()
+        err.contains("checksum mismatch")
+        err.contains("0000000000000000000000000000000000000000000000000000000000000000")
+    }
+
+    def "given dry-run-match with the matching osv-checksum when executed then exit zero"() {
+        when:
+        int exitCode = runCli("--dry-run-match",
+                "--sbom", "src/test/resources/fixtures/bom.json",
+                "--osv-dir", "src/test/resources/fixtures/osv",
+                "--osv-checksum", SnapshotChecksum.sha256OfDirectory(Path.of("src/test/resources/fixtures/osv")))
+
+        then:
+        exitCode == CliResult.OK.exitCode
     }
 }
