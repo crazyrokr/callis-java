@@ -1,9 +1,16 @@
 package org.reachability.analyzer;
 
+import org.reachability.analyzer.analysis.AnalysisContext;
+import org.reachability.analyzer.analysis.AnalysisException;
+import org.reachability.analyzer.analysis.CallGraphFactory;
+import org.reachability.analyzer.analysis.EntryPointDetector;
+import org.reachability.analyzer.analysis.SootUpSetup;
 import org.reachability.analyzer.osv.OsvRepository;
 import org.reachability.analyzer.osv.SnapshotChecksum;
 import org.reachability.analyzer.osv.VulnerabilityCandidate;
 import org.reachability.analyzer.osv.VulnerabilityCandidates;
+import sootup.core.signatures.MethodSignature;
+import sootup.java.core.views.JavaView;
 import org.reachability.analyzer.sbom.ParsedSbom;
 import org.reachability.analyzer.sbom.SbomComponent;
 import org.reachability.analyzer.sbom.SbomFormatException;
@@ -16,6 +23,8 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.Callable;
 
 /**
@@ -81,6 +90,20 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
                     + "a mismatch fails with exit 2.")
     String osvChecksum;
 
+    @Option(names = "--entry-points", split = ",",
+            description = "Explicit entry points (class#method, comma-separated); "
+                    + "wins over auto-detection.")
+    List<String> entryPoints;
+
+    @Option(names = "--callback-interfaces", split = ",",
+            description = "Additional callback interfaces (class#method, comma-separated) "
+                    + "for entry-point detection (extends the curated list, A13).")
+    List<String> callbackInterfaces;
+
+    @Option(names = "--dry-run-graph", hidden = true,
+            description = "Build the call graph, print entry points + node/edge counts, and exit.")
+    boolean dryRunGraph;
+
     public static void main(String[] args) {
         System.exit(new CommandLine(new ReachabilityAnalyzerCli()).execute(args));
     }
@@ -92,6 +115,9 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
         }
         if (dryRunMatch) {
             return dryRunMatch();
+        }
+        if (dryRunGraph) {
+            return dryRunGraph();
         }
         System.out.println("reachability-analyzer: analysis pipeline not wired yet "
                 + "(M1 skeleton build). Use --dry-run-sbom or wait for M3-M6.");
@@ -169,6 +195,80 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
         }
         printCandidateTable(VulnerabilityCandidates.collect(parsed, repository));
         return CliResult.OK.exitCode();
+    }
+
+    /**
+     * M3 T31-T34 debug mode: app classes + classpath file → bytecode guard →
+     * view → entry points → call graph (RTA or CHA) → node/edge counts.
+     */
+    private int dryRunGraph() {
+        if (appClasses == null) {
+            System.err.println("ERROR: --dry-run-graph requires --app-classes <dir>");
+            return CliResult.USAGE_ERROR.exitCode();
+        }
+        AnalysisContext context;
+        try {
+            context = AnalysisContext.of(appClasses, classpathFile);
+        } catch (IOException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            return CliResult.USAGE_ERROR.exitCode();
+        }
+        for (String warning : context.warnings()) {
+            System.err.println("WARNING: " + warning);
+        }
+
+        JavaView view;
+        try {
+            view = SootUpSetup.buildView(context, javaVersion);
+        } catch (AnalysisException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            return CliResult.ANALYSIS_FAILURE.exitCode();
+        }
+
+        EntryPointDetector detector = new EntryPointDetector();
+        List<MethodSignature> detected = detector.detect(view, context.appClassNames(),
+                entryPoints == null ? List.<String>of() : entryPoints, parseCallbackInterfaces(callbackInterfaces));
+        for (String warning : detector.warnings()) {
+            System.err.println("WARNING: " + warning);
+        }
+        if (detected.isEmpty()) {
+            System.err.println("ERROR: no entry points detected in " + appClasses
+                    + " — pass --entry-points class#method explicitly");
+            return CliResult.ANALYSIS_FAILURE.exitCode();
+        }
+        if (verbose) {
+            System.out.println("Detected entry points:");
+            detected.forEach(entryPoint -> System.out.println("  " + entryPoint));
+        }
+
+        CallGraphFactory.BuildResult result;
+        try {
+            result = CallGraphFactory.build(view, detected, cha);
+        } catch (AnalysisException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            return CliResult.ANALYSIS_FAILURE.exitCode();
+        }
+        System.out.println("call graph (" + (cha ? "CHA" : "RTA") + "): "
+                + result.nodeCount() + " nodes, " + result.edgeCount() + " calls, "
+                + result.buildMillis() + " ms");
+        return CliResult.OK.exitCode();
+    }
+
+    /** {@code class#method} list into an interface → callback methods map (A13). */
+    private static Map<String, List<String>> parseCallbackInterfaces(List<String> raw) {
+        Map<String, List<String>> result = new TreeMap<>();
+        if (raw == null) {
+            return result;
+        }
+        for (String entry : raw) {
+            int hash = entry.indexOf('#');
+            if (hash <= 0 || hash == entry.length() - 1) {
+                continue;
+            }
+            result.computeIfAbsent(entry.substring(0, hash), key -> new ArrayList<>())
+                    .add(entry.substring(hash + 1));
+        }
+        return result;
     }
 
     private ParsedSbom loadSbom() {

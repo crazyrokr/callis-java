@@ -256,3 +256,62 @@ parse/path work dominates.
   `Analyzer` still sees the class file and counts its lines as uncovered
   (verified: 256/258 → 239/239 after the fix). `SnapshotChecksumSpec` pins
   the algorithm instead.
+- **2026-10-06 (M3 verification):** the A12 guard runs **twice**: before the
+  view, `BytecodeVersionGuard.requireSupported` fails the run when any app
+  class file is above major 69 (naming the offenders, the detected major, and
+  the `--release` fix); before the zero-classes check, `SootUpSetup` fails
+  loudly when a **non-empty** app class directory parses to zero classes —
+  both `AnalysisException` → exit 3 (A8), because SootUp 3.0.1 otherwise
+  returns an empty view for (a) bytecode beyond the ceiling and (b) corrupt
+  class files (both silently return `[]`, verified by probe).
+- **2026-10-06 (M3 verification):** SootUp 3.0.1 has a **second silent-zero
+  path**: it drops `.class` files whose declared package does not match their
+  path under the classpath entry (e.g. `demo/Main.class` at a directory's top
+  level parses to nothing; `demo/Main.class` under `demo/` loads — verified by
+  probe 2026-10-06). The zero-classes check above catches the all-or-nothing
+  case; a partially mismatched directory would pass it, which is why the
+  fixture layout (and the `--app-classes` contract) keeps package = path.
+- **2026-10-06 (M3 verification):** SootUp `ArrayType.getBaseType()` unwraps
+  **multi-dimensional** arrays to the innermost element (`String[][]` →
+  `String`), so the `main(String[])` check needed an explicit
+  `getDimension() == 1` — without it `main(String[][])` is accepted as a JVM
+  entry point (false positive; the `BadMains` fixture pins all five trap
+  overloads as non-entries).
+- **2026-10-06 (M3 verification):** entry-point detection (A6/A13) as built:
+  `main(String[])` of **app classes only** (library mains in jars are never
+  entries); framework handler annotations read from bytecode
+  (`org.springframework.web.bind.annotation.*`, `@Scheduled`, `@KafkaListener`,
+  `@RabbitListener`); `doGet`/`doPost` of `@WebServlet` (javax/jakarta)
+  classes or `HttpServlet`/`jakarta HttpServlet` subclasses; and the bounded
+  callback list (A13: `javax/jakarta.servlet.Filter#doFilter`,
+  `org.quartz.Job#execute`,
+  `org.springframework.context.ApplicationListener#onApplicationEvent`,
+  `javax/jakarta.jms.MessageListener#onMessage`) resolved through the
+  interface/superclass chain (depth cap 16, duplicate-seen skip). Plain
+  business interfaces are **never** callback sources (precision guard,
+  pinned); `--callback-interfaces` extends the list and `--entry-points
+  class#method` overrides auto-detection (malformed / unknown entries are
+  warned, not fatal).
+- **2026-10-06 (M3 verification):** the call graph is RTA by default (prunes
+  to what the entry points reach — the plan's false-positive pin: a dead
+  virtual call to a never-instantiated implementation is pruned under RTA
+  but kept under `--cha`, both pinned), built via
+  `sootup.callgraph.{RapidTypeAnalysis,ClassHierarchy}AnalysisAlgorithm` on
+  the shared `JavaView` (A1). `--dry-run-graph` prints the detected entries
+  (`-v`) and the graph node/call counts + build time (M3 acceptance); an
+  app directory with **no detectable entry points is exit 3** (nothing to
+  analyze is a broken invocation, not a clean pass). `OutOfMemoryError`
+  during view/graph build becomes an `AnalysisException` with `-Xmx4g`
+  guidance; classpath-file entries that are missing/unreadable become
+  warnings (T34 skip-and-continue); a non-readable class directory fails the
+  scan (`cannot scan` → exit 3).
+- **2026-10-06 (M3 verification):** the `analysis` package lands at
+  **BRANCH 136/138 = 0.9855** (gate ≥ 0.90); the two uncovered branches are
+  the `OutOfMemoryError` catches (unreachable in the test JVM by design).
+  The fixture `fixtures/mini-app` grows to 46 app classes (servlet
+  superclass matrix, `@Marked` non-handler annotation, `BadMains` traps, a
+  16-deep interface chain + diamond for the walk depth cap) with
+  `StubSootClass`/`StubSootMethod`/`FakeView` test doubles for the
+  `SootClass`/`SootMethod` annotation fallbacks (SootUp 3.0.1 exposes those
+  as interfaces, so non-Java model objects are testable). The `examples/vulnerable-demo`
+  < 60 s build-time acceptance is measured in M6, when the demo is created.

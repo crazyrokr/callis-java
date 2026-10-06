@@ -209,4 +209,168 @@ class CliSpec extends Specification {
         then:
         exitCode == CliResult.OK.exitCode
     }
+
+    private File miniAppCpFile() {
+        File cp = new File("build/tmp/mini-app-cp.txt")
+        cp.parentFile.mkdirs()
+        cp.text = new File("src/test/resources/fixtures/mini-app/stublib.jar").absolutePath
+        return cp
+    }
+
+    private static final String MINI_APP_CLASSES = "src/test/resources/fixtures/mini-app/classes"
+
+    def "given dry-run-graph on the mini-app when executed then the graph is built and the size is printed"() {
+        when:
+        int exitCode = runCli("--dry-run-graph",
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath)
+
+        then:
+        exitCode == CliResult.OK.exitCode
+        def out = capturedOut.toString()
+        out.contains("call graph (RTA): ")
+        out.contains(" nodes, ")
+    }
+
+    def "given dry-run-graph with the cha flag when executed then the CHA graph is built"() {
+        when:
+        int exitCode = runCli("--dry-run-graph",
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--cha")
+
+        then:
+        exitCode == CliResult.OK.exitCode
+        capturedOut.toString().contains("call graph (CHA): ")
+    }
+
+    def "given dry-run-graph without the classpath file when executed then the app classes alone are analyzed"() {
+        when:
+        int exitCode = runCli("--dry-run-graph", "--app-classes", MINI_APP_CLASSES)
+
+        then:
+        exitCode == CliResult.OK.exitCode
+        capturedOut.toString().contains("call graph (RTA): ")
+    }
+
+    def "given dry-run-graph with verbose when executed then the detected entry points are printed"() {
+        when:
+        int exitCode = runCli("--dry-run-graph",
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "-v")
+
+        then:
+        exitCode == CliResult.OK.exitCode
+        def out = capturedOut.toString()
+        out.contains("Detected entry points:")
+        out.contains("demo.Main: void main")
+    }
+
+    def "given dry-run-graph with an entry point override when executed then the override is used"() {
+        when:
+        int exitCode = runCli("--dry-run-graph",
+                "--app-classes", MINI_APP_CLASSES,
+                "--entry-points", "demo.Main#main")
+
+        then:
+        exitCode == CliResult.OK.exitCode
+        capturedOut.toString().contains("call graph (RTA): ")
+    }
+
+    def "given dry-run-graph on classes above the bytecode ceiling when executed then exit analysis failure with the guard message"() {
+        when:
+        int exitCode = runCli("--dry-run-graph",
+                "--app-classes", "src/test/resources/fixtures/bytecode/v70")
+
+        then:
+        exitCode == CliResult.ANALYSIS_FAILURE.exitCode
+        def err = capturedErr.toString()
+        err.contains("ceiling")
+        err.contains("69")
+    }
+
+    def "given dry-run-graph on a directory of only corrupt class files when executed then exit analysis failure"() {
+        given:
+        File corruptDir = new File("build/tmp/corrupt-classes")
+        corruptDir.mkdirs()
+        new File(corruptDir, "Corrupt.class").bytes = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08] as byte[]
+
+        when:
+        int exitCode = runCli("--dry-run-graph", "--app-classes", corruptDir.absolutePath)
+
+        then:
+        exitCode == CliResult.ANALYSIS_FAILURE.exitCode
+        capturedErr.toString().contains("zero classes")
+    }
+
+    def "given dry-run-graph on a class directory without entry points when executed then exit analysis failure"() {
+        given: "Business is a plain interface: no main, no annotations, no callback. " +
+                "Package-consistent layout: SootUp silently drops .class files whose declared " +
+                "package does not match their path under the classpath entry (verified 2026-10-06)."
+        File noEntryBase = new File("build/tmp/no-entry-classes")
+        if (noEntryBase.exists()) {
+            java.nio.file.Files.walk(noEntryBase.toPath())
+                    .sorted(java.util.Comparator.reverseOrder())
+                    .forEach { p -> p.toFile().delete() }
+        }
+        java.nio.file.Files.createDirectories(noEntryBase.toPath().resolve("demo"))
+        java.nio.file.Files.copy(new File("src/test/resources/fixtures/mini-app/classes/demo/Business.class").toPath(),
+                noEntryBase.toPath().resolve("demo").resolve("Business.class"))
+
+        when:
+        int exitCode = runCli("--dry-run-graph", "--app-classes", noEntryBase.absolutePath)
+
+        then:
+        exitCode == CliResult.ANALYSIS_FAILURE.exitCode
+        capturedErr.toString().contains("no entry points detected")
+    }
+
+    def "given dry-run-graph on an empty class directory when executed then exit analysis failure"() {
+        given: "no class files: nothing to detect, so no entry points"
+        File emptyDir = new File("build/tmp/empty-classes")
+        emptyDir.mkdirs()
+
+        when:
+        int exitCode = runCli("--dry-run-graph", "--app-classes", emptyDir.absolutePath)
+
+        then:
+        exitCode == CliResult.ANALYSIS_FAILURE.exitCode
+        capturedErr.toString().contains("no entry points detected")
+    }
+
+    def "given dry-run-graph with a missing app class directory when executed then exit usage error"() {
+        when:
+        int exitCode = runCli("--dry-run-graph", "--app-classes", "build/tmp/no-such-classes")
+
+        then:
+        exitCode == CliResult.USAGE_ERROR.exitCode
+        capturedErr.toString().contains("does not exist")
+    }
+
+    def "given dry-run-graph without the app classes option when executed then exit usage error"() {
+        when:
+        int exitCode = runCli("--dry-run-graph")
+
+        then:
+        exitCode == CliResult.USAGE_ERROR.exitCode
+        capturedErr.toString().contains("--app-classes")
+    }
+
+    def "given dry-run-graph with a classpath file listing a missing jar when executed then a warning is printed and the run succeeds"() {
+        given:
+        File cp = new File("build/tmp/mini-app-cp-missing.txt")
+        cp.parentFile.mkdirs()
+        cp.text = "${cp.parentFile}/missing.jar"
+
+        when:
+        int exitCode = runCli("--dry-run-graph",
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", cp.absolutePath)
+
+        then:
+        exitCode == CliResult.OK.exitCode
+        capturedErr.toString().contains("missing.jar")
+        capturedOut.toString().contains("call graph (RTA): ")
+    }
 }
