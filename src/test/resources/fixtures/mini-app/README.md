@@ -5,8 +5,11 @@ A small "application under test" for the M3 call-graph tests:
 - `src/app/demo/` — application classes (compiled into `classes/demo/`):
   `main()` entries, Spring/Quartz/Filter/JMS callback entries, servlet classes
   (javax/jakarta/odd/none superclass), `@Marked` non-handler annotation,
-  `BadMains` signature traps, and `demo/chain/` (a 16-deep interface chain plus
-  a diamond, used by the callback-walk depth-cap and duplicate-seen branches).
+  `BadMains` signature traps, `demo/chain/` (a 16-deep interface chain plus
+  a diamond, used by the callback-walk depth-cap and duplicate-seen
+  branches), and the M4 positive chain `VulnCaller`/`VulnCaller2`/
+  `VulnService` (main -> service -> `stublib.Stub.danger`, with the two
+  callers at equal distance for the lexicographic path tie-break).
 - `src/lib/` — stub framework APIs (Spring, Quartz, JMS, servlet, jakarta
   servlet) plus `stublib.Stub` (safe/danger) and `libpkg.Tool` (a library main).
 - `stublib.jar` — the library classes from `src/lib/` (stublib, libpkg, jakarta).

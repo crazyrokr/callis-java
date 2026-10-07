@@ -1,0 +1,25 @@
+{
+  "id": "VULN-POS",
+  "summary": "Test vulnerability in the stublib fixture",
+  "details": "Hand-written OSV record for the M4 reachability tests: affects stublib 1.x, fixed in 2.0.",
+  "published": "2026-10-06T00:00:00Z",
+  "modified": "2026-10-06T00:00:00Z",
+  "affected": [
+    {
+      "package": {
+        "name": "stublib:stublib",
+        "purl": "pkg:maven/stublib/stublib",
+        "ecosystem": "Maven"
+      },
+      "ranges": [
+        {
+          "type": "ECOSYSTEM",
+          "events": [
+            {"introduced": "0"},
+            {"fixed": "2.0"}
+          ]
+        }
+      ]
+    }
+  ]
+}

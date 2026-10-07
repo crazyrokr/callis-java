@@ -1,0 +1,14 @@
+{
+  "VULN-POS": [
+    {"class": "stublib.Stub", "method": "danger"}
+  ],
+  "VULN-NEG": [
+    {"class": "stublib.Stub", "method": "safe"}
+  ],
+  "VULN-NOCLASS": [
+    {"class": "nope.Gone", "method": "gone"}
+  ],
+  "VULN-DESC": [
+    {"class": "stublib.Stub", "method": "danger", "descriptor": "()"}
+  ]
+}

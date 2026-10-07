@@ -315,3 +315,57 @@ parse/path work dominates.
   `SootClass`/`SootMethod` annotation fallbacks (SootUp 3.0.1 exposes those
   as interfaces, so non-Java model objects are testable). The `examples/vulnerable-demo`
   < 60 s build-time acceptance is measured in M6, when the demo is created.
+
+- **2026-10-07 (M4 verification):** verdict model (T41/T44). A candidate
+  matches at **METHOD level** when its mapping names methods that resolve
+  in the parsed view (reachability = the resolved signature is in the call
+  graph); otherwise it falls back to **ARTIFACT level** (any class of the
+  artifact's jar with a method in the graph — constructors excluded:
+  instantiating the artifact is not use of a vulnerable method). States:
+  `REACHABLE`, `UNREACHABLE`, `NO_CLASS_INFO`. **A14 `onClasspath`**:
+  artifact present in the parsed view but nothing reachable → `UNREACHABLE`
+  + console `NOTICE ... artifact present in classpath - possible reflection
+  or dynamic dispatch risk`; artifact absent from the classpath entirely →
+  `NO_CLASS_INFO` + `NOTICE ... artifact not on classpath - no class info`.
+  Any `REACHABLE` ⇒ exit 1 with a `CRITICAL` line + the call path; all
+  unreachable ⇒ exit 0; zero candidates short-circuits before the analysis
+  (exit 0).
+- **2026-10-07 (M4 verification):** the optional `--mappings
+  vuln-mappings.json` (T42) is a strict object
+  `{"VULN-ID": [{"class": "...", "method": "...", "descriptor": "(...)"?}]}`,
+  validated at startup before any analysis (malformed ⇒ exit 2, unreadable
+  ⇒ exit 2). `descriptor` is a source-style parameter list that narrows the
+  match to one overload (matched against the sub-signature suffix). Mapping
+  ids that match no candidate are warned, never fatal; an empty target list
+  falls back to the artifact level. Artifact jars are indexed by file name
+  (`name[-version]` stem → binary class names); a version-suffixed jar
+  matching the SBOM version is preferred, with fallback to the union of all
+  same-named jars; unreadable/corrupt jars warn and are skipped (T34
+  skip-and-continue).
+- **2026-10-07 (M4 verification):** path extraction (T43) is a multi-source
+  BFS over the reachability-reduced graph — one shortest path per
+  candidate, hops as `class#method`. Determinism: sources are sorted by the
+  **user-visible `class#method` hop string**, not by
+  `MethodSignature.toString()`: the latter renders
+  `<demo.VulnCaller: void main(...)>`, where the `:` sorts after digits, so
+  `VulnCaller2` would precede `VulnCaller` (pinned: two equal-distance
+  callers yield exactly the lexicographic-first path, repeat-call
+  identical; a closer caller beats a farther one).
+- **2026-10-07 (M4 verification):** A16 baseline on the 49-class
+  `fixtures/mini-app` (shadow JAR, Java 25.0.3-tem): RTA graph
+  **27 nodes / 44 calls, build ≈ 99 ms**; full pipeline
+  (SBOM + OSV + guard + view + entries + graph + verdicts) **≈ 382 ms**
+  analysis, **≈ 0.5 s wall** (JVM startup dominates). The
+  `examples/vulnerable-demo` < 60 s acceptance is measured in M6 when the
+  demo is created; the M4 fixture pipeline already meets it by two orders
+  of magnitude. `fixtures/mini-app` grew to 49 app classes (`VulnCaller`,
+  `VulnCaller2`, `VulnService` for the positive chain and the lexicographic
+  tie); new fixtures `bom-mini.json`, `osv-mini/VULN-POS.json`,
+  `mappings/{valid,malformed,malformed-entry}.json`.
+- **2026-10-07 (M4 verification):** the `analysis` package lands at
+  **BRANCH 272/288 = 0.9444** (gate ≥ 0.90, up from 136/138 in M3). The
+  remaining uncovered branches are defensive sub-branches unreachable in
+  the test setup — null `Path.getFileName()` at the filesystem root,
+  Jackson `NullNode`-vs-`null` distinctions, `&&`/`||` short-circuit
+  sub-conditions — kept as guards in the same spirit as the M3
+  `OutOfMemoryError` catches.

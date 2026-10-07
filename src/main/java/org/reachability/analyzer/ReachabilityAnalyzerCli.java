@@ -2,9 +2,13 @@ package org.reachability.analyzer;
 
 import org.reachability.analyzer.analysis.AnalysisContext;
 import org.reachability.analyzer.analysis.AnalysisException;
+import org.reachability.analyzer.analysis.ArtifactClassIndex;
 import org.reachability.analyzer.analysis.CallGraphFactory;
 import org.reachability.analyzer.analysis.EntryPointDetector;
+import org.reachability.analyzer.analysis.ReachabilityChecker;
 import org.reachability.analyzer.analysis.SootUpSetup;
+import org.reachability.analyzer.analysis.VulnMappingFormatException;
+import org.reachability.analyzer.analysis.VulnMappingLoader;
 import org.reachability.analyzer.osv.OsvRepository;
 import org.reachability.analyzer.osv.SnapshotChecksum;
 import org.reachability.analyzer.osv.VulnerabilityCandidate;
@@ -29,7 +33,8 @@ import java.util.concurrent.Callable;
 
 /**
  * CLI entry point. Options and exit-code contract per the implementation plan
- * (T11, A8); the analysis pipeline itself lands in M2-M6.
+ * (T11, A8). The full pipeline (SBOM + OSV candidates, SootUp call graph,
+ * verdicts) is wired from M4; the dry-run modes debug each stage in isolation.
  */
 @Command(
         name = "reachability-analyzer",
@@ -119,9 +124,165 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
         if (dryRunGraph) {
             return dryRunGraph();
         }
-        System.out.println("reachability-analyzer: analysis pipeline not wired yet "
-                + "(M1 skeleton build). Use --dry-run-sbom or wait for M3-M6.");
-        return CliResult.USAGE_ERROR.exitCode();
+        return analyze();
+    }
+
+    /**
+     * M4 T44: the full pipeline — SBOM + OSV candidates, then bytecode
+     * guard, view, entry points, call graph, and per-candidate verdicts.
+     * Exit 1 when any candidate is REACHABLE, 0 otherwise; 2 for usage
+     * errors; 3 for analysis failures.
+     */
+    private int analyze() {
+        long started = System.currentTimeMillis();
+        if (sbom == null || osvDir == null || appClasses == null) {
+            System.err.println("ERROR: analysis requires --sbom, --osv-dir and --app-classes");
+            return CliResult.USAGE_ERROR.exitCode();
+        }
+        ParsedSbom parsed = loadSbom();
+        if (parsed == null) {
+            return CliResult.USAGE_ERROR.exitCode();
+        }
+
+        OsvRepository repository;
+        try {
+            repository = new OsvRepository(osvDir);
+        } catch (IOException e) {
+            System.err.println("ERROR: cannot read OSV directory: " + e.getMessage());
+            return CliResult.USAGE_ERROR.exitCode();
+        }
+        for (String warning : repository.warnings()) {
+            System.err.println("WARNING: " + warning);
+        }
+        if (osvChecksum != null) {
+            String actual;
+            try {
+                actual = SnapshotChecksum.sha256OfDirectory(osvDir);
+            } catch (IOException e) {
+                System.err.println("ERROR: cannot hash OSV directory: " + e.getMessage());
+                return CliResult.USAGE_ERROR.exitCode();
+            }
+            if (!actual.equals(osvChecksum)) {
+                System.err.println("ERROR: OSV snapshot checksum mismatch: expected "
+                        + osvChecksum + ", found " + actual);
+                return CliResult.USAGE_ERROR.exitCode();
+            }
+        }
+        if (repository.fileCount() > 0 && repository.validRecordCount() == 0) {
+            System.err.println("ERROR: OSV directory contains " + repository.fileCount()
+                    + " record file(s) but zero valid records; refusing to pass silently");
+            return CliResult.ANALYSIS_FAILURE.exitCode();
+        }
+        for (String warning : parsed.getWarnings()) {
+            System.err.println("WARNING: " + warning);
+        }
+
+        List<VulnerabilityCandidate> candidates = VulnerabilityCandidates.collect(parsed, repository);
+        if (candidates.isEmpty()) {
+            System.out.println("No vulnerability candidates: SBOM components do not match any OSV record.");
+            return CliResult.OK.exitCode();
+        }
+
+        AnalysisContext context;
+        try {
+            context = AnalysisContext.of(appClasses, classpathFile);
+        } catch (IOException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            return CliResult.USAGE_ERROR.exitCode();
+        }
+        for (String warning : context.warnings()) {
+            System.err.println("WARNING: " + warning);
+        }
+
+        JavaView view;
+        try {
+            view = SootUpSetup.buildView(context, javaVersion);
+        } catch (AnalysisException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            return CliResult.ANALYSIS_FAILURE.exitCode();
+        }
+
+        EntryPointDetector detector = new EntryPointDetector();
+        List<MethodSignature> detected = detector.detect(view, context.appClassNames(),
+                entryPoints == null ? List.<String>of() : entryPoints, parseCallbackInterfaces(callbackInterfaces));
+        for (String warning : detector.warnings()) {
+            System.err.println("WARNING: " + warning);
+        }
+        if (detected.isEmpty()) {
+            System.err.println("ERROR: no entry points detected in " + appClasses
+                    + " — pass --entry-points class#method explicitly");
+            return CliResult.ANALYSIS_FAILURE.exitCode();
+        }
+        if (verbose) {
+            System.out.println("Detected entry points:");
+            detected.forEach(entryPoint -> System.out.println("  " + entryPoint));
+        }
+
+        CallGraphFactory.BuildResult result;
+        try {
+            result = CallGraphFactory.build(view, detected, cha);
+        } catch (AnalysisException e) {
+            System.err.println("ERROR: " + e.getMessage());
+            return CliResult.ANALYSIS_FAILURE.exitCode();
+        }
+        if (verbose) {
+            System.out.println("call graph (" + (cha ? "CHA" : "RTA") + "): "
+                    + result.nodeCount() + " nodes, " + result.edgeCount() + " calls, "
+                    + result.buildMillis() + " ms");
+        }
+
+        Map<String, List<VulnMappingLoader.VulnTarget>> mapping;
+        if (mappings != null) {
+            try {
+                mapping = new VulnMappingLoader().load(mappings);
+            } catch (VulnMappingFormatException e) {
+                System.err.println("ERROR: " + e.getMessage());
+                return CliResult.USAGE_ERROR.exitCode();
+            } catch (IOException e) {
+                System.err.println("ERROR: cannot read mappings file: " + e.getMessage());
+                return CliResult.USAGE_ERROR.exitCode();
+            }
+        } else {
+            mapping = Map.of();
+        }
+
+        ArtifactClassIndex index = new ArtifactClassIndex(context.jars());
+        for (String warning : index.warnings()) {
+            System.err.println("WARNING: " + warning);
+        }
+
+        ReachabilityChecker checker = new ReachabilityChecker(view, result.graph(), detected);
+        List<ReachabilityChecker.Verdict> verdicts = checker.check(candidates, mapping, index);
+        for (String warning : checker.warnings()) {
+            System.err.println("WARNING: " + warning);
+        }
+
+        int reachableCount = 0;
+        for (ReachabilityChecker.Verdict verdict : verdicts) {
+            VulnerabilityCandidate candidate = verdict.candidate();
+            if (verdict.status() == ReachabilityChecker.VerdictStatus.REACHABLE) {
+                reachableCount++;
+                System.out.println("CRITICAL: " + candidate.displayId() + " "
+                        + candidate.componentName() + " " + candidate.componentVersion() + " REACHABLE");
+                System.out.println("  path: " + String.join(" -> ", verdict.path()));
+            } else if (verdict.status() == ReachabilityChecker.VerdictStatus.UNREACHABLE) {
+                System.out.println("NOTICE: " + candidate.displayId() + " "
+                        + candidate.componentName() + " " + candidate.componentVersion() + " UNREACHABLE"
+                        + (verdict.onClasspath()
+                                ? " (artifact present in classpath - possible reflection or dynamic dispatch risk)"
+                                : ""));
+            } else {
+                System.out.println("NOTICE: " + candidate.displayId() + " "
+                        + candidate.componentName() + " " + candidate.componentVersion()
+                        + " UNREACHABLE (artifact not on classpath - no class info)");
+            }
+        }
+        System.out.println(candidates.size() + " candidate(s): " + reachableCount + " reachable");
+        if (verbose) {
+            System.out.println("analysis took " + (System.currentTimeMillis() - started)
+                    + " ms (call graph: " + result.buildMillis() + " ms)");
+        }
+        return reachableCount > 0 ? CliResult.REACHABLE_VULNERABILITIES.exitCode() : CliResult.OK.exitCode();
     }
 
     private int dryRunSbom() {

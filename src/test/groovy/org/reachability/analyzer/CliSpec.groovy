@@ -56,13 +56,13 @@ class CliSpec extends Specification {
         capturedOut.toString().contains("0.1.0-SNAPSHOT")
     }
 
-    def "given no arguments when executed then skeleton notice and exit usage error"() {
-        when:
+    def "given no arguments when executed then missing-option error and exit usage error"() {
+        when: "the pipeline is wired (M4): running it without the required options is a usage error"
         int exitCode = runCli()
 
         then:
         exitCode == CliResult.USAGE_ERROR.exitCode
-        capturedOut.toString().contains("not wired yet")
+        capturedErr.toString().contains("analysis requires --sbom, --osv-dir and --app-classes")
     }
 
     def "given dry-run-sbom with fixture when executed then component table and exit zero"() {
@@ -372,5 +372,121 @@ class CliSpec extends Specification {
         exitCode == CliResult.OK.exitCode
         capturedErr.toString().contains("missing.jar")
         capturedOut.toString().contains("call graph (RTA): ")
+    }
+
+    // ------------------------------------------------------------------
+    // M4 T44: the full pipeline (SBOM + OSV + call graph + verdicts).
+    // ------------------------------------------------------------------
+
+    private static final String BOM_MINI = "src/test/resources/fixtures/bom-mini.json"
+    private static final String OSV_MINI = "src/test/resources/fixtures/osv-mini"
+    private static final String MAPPINGS = "src/test/resources/fixtures/mappings/valid.json"
+
+    def "given a reachable vulnerability in the pipeline when executed then exit one with a CRITICAL line and the call path"() {
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", MAPPINGS)
+
+        then: "the mapped method is called from the app: REACHABLE, exit 1, path printed hop by hop"
+        exitCode == CliResult.REACHABLE_VULNERABILITIES.exitCode
+        def out = capturedOut.toString()
+        out.contains("CRITICAL: VULN-POS")
+        out.contains("REACHABLE")
+        out.contains("demo.MainDanger#main -> stublib.Stub#danger")
+        out.contains("1 candidate(s): 1 reachable")
+    }
+
+    def "given the same pipeline with the vulnerable call excluded from the entry points when executed then exit zero with a NOTICE"() {
+        when: "--entry-points demo.Main#main: Main calls only safe(); the artifact is still on the classpath"
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", MAPPINGS,
+                "--entry-points", "demo.Main#main")
+
+        then: "UNREACHABLE with the A14 onClasspath notice, exit 0"
+        exitCode == CliResult.OK.exitCode
+        def out = capturedOut.toString()
+        out.contains("NOTICE: VULN-POS")
+        out.contains("UNREACHABLE")
+        out.contains("artifact present in classpath")
+        out.contains("1 candidate(s): 0 reachable")
+    }
+
+    def "given the pipeline with an osv directory without matching records when executed then exit zero with the zero-candidate summary"() {
+        given:
+        File emptyDir = new File("build/tmp/osv-pipeline-empty")
+        emptyDir.mkdirs()
+
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", emptyDir.absolutePath,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath)
+
+        then: "no candidates: the analysis is skipped entirely"
+        exitCode == CliResult.OK.exitCode
+        capturedOut.toString().contains("No vulnerability candidates")
+        !capturedOut.toString().contains("call graph")
+    }
+
+    def "given the pipeline without the required options when executed then exit usage error"() {
+        when:
+        int exitCode = runCli("--sbom", BOM_MINI, "--osv-dir", OSV_MINI)
+
+        then:
+        exitCode == CliResult.USAGE_ERROR.exitCode
+        capturedErr.toString().contains("analysis requires --sbom, --osv-dir and --app-classes")
+    }
+
+    def "given the pipeline with a malformed mappings file when executed then exit usage error"() {
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", "src/test/resources/fixtures/mappings/malformed.json")
+
+        then:
+        exitCode == CliResult.USAGE_ERROR.exitCode
+        capturedErr.toString().contains("malformed.json")
+        capturedErr.toString().contains("object")
+    }
+
+    def "given the pipeline with a missing mappings file when executed then exit usage error"() {
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", "build/tmp/no-such-mappings.json")
+
+        then:
+        exitCode == CliResult.USAGE_ERROR.exitCode
+        capturedErr.toString().contains("cannot read mappings")
+    }
+
+    def "given the pipeline with the cha flag when executed then the verdicts hold on the CHA graph"() {
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", MAPPINGS,
+                "--cha")
+
+        then: "CHA is less precise but the same mapped call is still reachable"
+        exitCode == CliResult.REACHABLE_VULNERABILITIES.exitCode
+        capturedOut.toString().contains("CRITICAL: VULN-POS")
     }
 }

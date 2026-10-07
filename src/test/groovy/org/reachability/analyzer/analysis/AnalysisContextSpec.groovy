@@ -110,15 +110,16 @@ class AnalysisContextSpec extends Specification {
         file.toPath()
     }
 
-    def "given the mini-app classes when the app class names are read then all 46 binary names appear"() {
+    def "given the mini-app classes when the app class names are read then all 49 binary names appear"() {
         when:
         Set<String> names = AnalysisContext.of(new File(MINI_APP, "classes").toPath(), null).appClassNames()
 
         then:
         names.containsAll(["demo.Main", "demo.MainDanger", "demo.QuartzJobImpl",
                            "demo.WebController", "demo.MyJob", "demo.NotAMain", "demo.DeadCall",
+                           "demo.VulnCaller", "demo.VulnCaller2", "demo.VulnService",
                            "demo.chain.C01", "demo.chain.ChainEnd", "demo.chain.DiamondEnd"])
-        names.size() == 46
+        names.size() == 49
     }
 
     def "given a classpath file with blank lines when built then the empty entries are skipped"() {
