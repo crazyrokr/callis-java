@@ -413,3 +413,39 @@ parse/path work dominates.
   VULN-POS.json` gained a `severity` array so the pipeline report carries
   real severity end-to-end. Coverage: osv LINE 262/262 = 1.0,
   BRANCH 187/198 = 0.9444; analysis unchanged at 272/288 = 0.9444.
+- **2026-10-07 (M6 verification):** snapshot download + pinning (T61).
+  `scripts/download-osv.sh` fetches `Maven/all.zip` (`curl -fL --retry 3` →
+  mktemp → `unzip -oq`) and writes `osv-maven.sha256` with the **same
+  algorithm** as `SnapshotChecksum` (sha256 over `name:filesha256` lines,
+  `LC_ALL=C`-sorted; the whole computation runs in one subshell so the
+  `cd` applies to every per-file hash). Parity verified: shell pin ==
+  analyzer-computed == `69a25c75…` over 7,168 records.
+- **2026-10-07 (M6 verification):** living integration test (T65).
+  `examples/vulnerable-demo` — Maven **on purpose** (the tool is Gradle; the
+  demo proves cross-build-system analysis), CycloneDX 2.9.1 at package time,
+  log4j 2.14.1 pinned, log4j-core used directly from `main()`. Vulnerable pin:
+  **exit 1, 8 REACHABLE** (incl. log4shell `GHSA-jfh8-c2jp-5v3q` and 2026
+  log4j-api/core records), 5–19-hop traces through real log4j internals
+  (e.g. `LoggerContext#<clinit>` → … → `LoggerConfig#processLogEvent`), ~2.7 s
+  wall on the full 7,168-record snapshot (A16 < 60 s). Fixed pin **2.25.5**
+  (at or beyond every log4j fixed bound in the current snapshot: log4j-core
+  max fixed 2.25.4, log4j-api `GHSA-qv9r-c865-cp47` fixed 2.25.5): **exit 0,
+  zero candidates**.
+- **2026-10-07 (M6 verification):** consumer CI templates (T62/T63). The GH
+  workflow runs the analyzer with `continue-on-error` + a
+  `steps.*.outcome == 'failure'` gate, so it **fails by design** on this
+  repository (the committed demo pin is the red variant) while always
+  uploading both reports; the Gradle target variant is documented inline
+  (A7). The Jenkinsfile is declarative (`Build & SBOM` → `OSV cache` via
+  `stash` with the pin verified on every build → `Reachability Analysis` →
+  archive `reachability-report.*`); it fails naturally on exit 1. Groovy
+  note recorded: named-argument calls inside a `$(…)` GString interpolation
+  do not lex, so the cache-hit echo is a plain string with shell-level
+  `\$()`.
+- **2026-10-07 (M6 verification):** stale-report deletion. A run that ends
+  before report generation (zero candidates, analysis failure) used to leave
+  a previous run's `reachability-report.*` behind — the CLI now deletes
+  existing report files at analysis start (warns, does not fail, when a
+  delete is impossible). Regression: CliSpec pre-creates reports, runs a
+  zero-candidate pipeline into the same base name, and asserts both are gone
+  (exit 0).

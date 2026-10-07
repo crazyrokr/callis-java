@@ -11,6 +11,7 @@ osv-maven.sha256
 .vscode/
 .DS_Store
 cp.txt
+target/
 reachability-report*
 !src/test/resources/fixtures/reports/reachability-report.*
 build-out/

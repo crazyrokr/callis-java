@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.example</groupId>
+  <artifactId>vulnerable-demo</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <name>vulnerable-demo</name>
+  <description>
+    Living integration test for the reachability analyzer (T65). Deliberately
+    Maven while the analyzer itself is Gradle: it proves cross-build-system
+    analysis end-to-end (SBOM + classpath in, verdicts out).
+
+    The log4j version pins a known-vulnerable release: the analyzer must
+    find log4j-core classes reachable from main() and exit 1 (the committed
+    GitHub workflow fails by design). Switching log4j.version to the fixed
+    release 2.25.5 makes the same run pass (exit 0, no candidates — 2.25.5
+    sits at or beyond the fixed bound of every log4j record in the OSV
+    snapshot; verified 2026-10-07).
+  </description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Buildable with any JDK up to 25 (A12): compile at 17. -->
+    <maven.compiler.release>17</maven.compiler.release>
+    <!-- VULNERABLE pin (log4shell, GHSA-jfh8-c2jp-5v3q, and more).
+         Fixed: 2.25.5 (at or beyond every log4j fixed bound in the
+         current OSV snapshot). -->
+    <log4j.version>2.14.1</log4j.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-api</artifactId>
+      <version>${log4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
+      <version>${log4j.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+      <!-- CycloneDX SBOM at package time: target/bom.json (CycloneDX 1.6). -->
+      <plugin>
+        <groupId>org.cyclonedx</groupId>
+        <artifactId>cyclonedx-maven-plugin</artifactId>
+        <version>2.9.1</version>
+        <executions>
+          <execution>
+            <id>make-bom</id>
+            <phase>package</phase>
+            <goals>
+              <goal>makeBom</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <outputName>bom</outputName>
+          <outputFormat>Json</outputFormat>
+          <specVersion>1_6</specVersion>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

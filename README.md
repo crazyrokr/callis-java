@@ -9,7 +9,7 @@ REACHABLE / UNREACHABLE verdicts with call traces → JSON + JUnit XML reports.
 Exit code `1` on any reachable vulnerability (fail the pipeline), `0` otherwise
 (`2` = usage error, `3` = analysis failure).
 
-Status: under construction — see `implementation-plan.md` for milestones.
+Status: v1 complete (M0–M6 of `implementation-plan.md`); M7 is stretch-only.
 
 ## Pinned toolchain & dependencies (verified 2026-10-05)
 
@@ -31,20 +31,143 @@ All pins live in `gradle/libs.versions.toml` (single source of truth).
 
 > The Fat-JAR is Java 25 bytecode: run it with a JDK 25 `java`, not an older one.
 
-## Quick start (once built)
+## Quick start
 
 ```bash
+# 1. Build the Fat-JAR
 ./gradlew shadowJar
-java -jar build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar --help
+
+# 2. Download the OSV snapshot (writes osv-maven/ + the osv-maven.sha256 pin)
+bash scripts/download-osv.sh osv-maven
+
+# 3. Build the committed demo (Maven on purpose — cross-build-system proof):
+#    CycloneDX SBOM at package time + the resolved dependency classpath
+cd examples/vulnerable-demo
+mvn -B package
+mvn -B dependency:build-classpath -Dmdep.outputFile=target/cp.txt
+cd ../..
+
+# 4. Analyze
+java -jar build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
+  --app-classes=examples/vulnerable-demo/target/classes \
+  --classpath-file=examples/vulnerable-demo/target/cp.txt \
+  --sbom=examples/vulnerable-demo/target/bom.json \
+  --osv-dir=osv-maven \
+  --osv-checksum="$(cut -d' ' -f1 osv-maven.sha256)" \
+  --format=json,junitxml \
+  --output=reachability-report
 ```
 
-## Precision caveat
+The demo pins log4j **2.14.1** (log4shell, `GHSA-jfh8-c2jp-5v3q`, and more):
+the run exits **1** with 8 REACHABLE verdicts and full call traces in
+`reachability-report.junit.xml`. Switching the pom's `log4j.version` to the
+fixed release **2.25.5** makes the same run exit **0** with zero candidates
+(2.25.5 sits at or beyond the fixed bound of every log4j record in the current
+snapshot; verified 2026-10-07).
 
-OSV Maven records carry **package-level** data only (no class/method
-signatures — 0 of 7,163 records carry method data). Default verdicts are
-artifact-level ("some class of the vulnerable artifact is reachable"); use
-`--mappings=vuln-mappings.json` for class/method-level precision on critical
-CVEs. See the ADR for details.
+## CLI reference
+
+| Option | Meaning |
+|---|---|
+| `--app-classes=<dir>` | Directory with the compiled application classes to analyze |
+| `--classpath-file=<file>` | File with the resolved dependency classpath (colon- or newline-separated jar list) |
+| `--sbom=<file>` | Path to the CycloneDX `bom.json` of the target project |
+| `--osv-dir=<dir>` | Directory with local OSV Maven records |
+| `--osv-checksum=<sha256>` | Expected sha256 of the OSV snapshot directory (A14 pinning); a mismatch fails with exit 2 |
+| `--mappings=<file>` | Optional `vuln-mappings.json` (vuln id → class/method entries) |
+| `--entry-points=<class#method,…>` | Explicit entry points; wins over auto-detection |
+| `--callback-interfaces=<class#method,…>` | Additional callback interfaces for entry-point detection (extends the curated list, A13) |
+| `--cha` | Build the call graph with CHA instead of RTA |
+| `--java-version=<n>` | Expected Java version of the target (informational hint for the guard) |
+| `--format=json,junitxml` | Report formats to write (comma-separated; unknown token ⇒ exit 2) |
+| `--output=<base>` | Base name for the generated reports (`<base>.json`, `<base>.junit.xml`) |
+| `-v, --verbose` | Verbose diagnostics (entry points, CG size, durations, written files) |
+| `-h, --help` / `-V, --version` | Usage / version |
+
+Exit codes (A8): `0` = no reachable vulnerability (including zero candidates);
+`1` = ≥ 1 REACHABLE; `2` = usage/config error; `3` = analysis failure (including
+bytecode beyond the supported ceiling and a non-writable report destination).
+A run that ends before report generation deletes any previous run's report
+files under `--output`, so a green run never reads stale evidence.
+
+## vuln-mappings.json (class/method-level precision)
+
+OSV Maven records carry package-level data only, so default verdicts are
+artifact-level. For critical CVEs, pin the vulnerable classes/methods
+yourself:
+
+```json
+{
+  "CVE-2021-44228": [
+    {"class": "org.apache.logging.log4j.core.lookup.JndiLookup", "method": "lookup"}
+  ],
+  "CVE-2020-21570": [
+    {"class": "org.apache.logging.log4j.core.config.reloader.ReconfiguringWatcher", "method": "run"}
+  ]
+}
+```
+
+Rules: the key is the OSV/GHSA id; each entry is `class` (+ `method`, optional
+`descriptor` — without it any overload of the method matches). The file is
+validated at startup (malformed ⇒ exit 2); vuln ids with no matching candidate
+are ignored, ids present in the SBOM match but absent from the mapping fall
+back to artifact-level with a report flag, and a mapping entry whose method is
+absent from the call graph is UNREACHABLE (not an error).
+
+## Precision limitations (A4)
+
+- **Artifact-level default.** "Some class of the vulnerable artifact is
+  reachable from a detected entry point" — low false-positive rate, but coarse:
+  a reachable *safe* class of the artifact still yields REACHABLE. OSV Maven
+  carries no class/method data (0 of 7,163 current records do), so this is the
+  honest default; `--mappings` narrows it per CVE.
+- **RTA (default) vs CHA (`--cha`).** RTA prunes to the reachable set from the
+  entry points — fewer false positives, and it is what the gate relies on. CHA
+  keeps dead code and over-approximates: use it to *compare*, not to pass.
+- **Reflection / dynamic dispatch** (Spring wiring, `Class.forName`, SPI)
+  defeats any static call graph. An artifact that is on the classpath but has
+  no static path is reported UNREACHABLE **with `onClasspath: true`** and a
+  console/JUnit-XML NOTICE ("possible reflection/dynamic dispatch risk") — the
+  dangerous false-negative direction is made visible, not silent.
+- **Entry points** = app-class `main()`, curated annotation handlers
+  (controllers, `@Scheduled`, JMS/Kafka/Rabbit listeners, `@WebServlet`,
+  Quartz), plus curated callback interfaces (A13). Extend with
+  `--callback-interfaces`; the "every interface implementation" variant is
+  deliberately not offered (it would collapse RTA precision).
+
+## OSV snapshot operations
+
+- `bash scripts/download-osv.sh [dest]` fetches
+  `https://osv-vulnerabilities.storage.googleapis.com/Maven/all.zip`
+  (`curl -fL --retry 3`, ~10 MB, daily refresh) into `osv-maven/` and writes
+  `osv-maven.sha256` next to it. The pin is the **same value** the analyzer
+  computes from the directory (sha256 over `name:filesha256` lines,
+  `LC_ALL=C`-sorted), so `--osv-checksum="$(cut -d' ' -f1 osv-maven.sha256)"`
+  refuses a changed/tampered snapshot (mismatch ⇒ exit 2).
+- The analyzer records the snapshot sha256 in report metadata on every run.
+- **Air-gapped / corporate cache (R7):** publish the zip to
+  Nexus/Artifactory as an ops step and unzip it in place of the download —
+  `--osv-dir` is the only contract. Re-run `download-osv.sh` (or re-publish)
+  to pick up new records; the pin travels with the data.
+
+## CI/CD
+
+- **`.github/workflows/reachability-check.yml`** — the consumer template (A7):
+  JDK 25 → `download-osv.sh` → build the target (Maven: `mvn package` +
+  `dependency:build-classpath`; Gradle variant documented inline) → run the
+  analyzer with `continue-on-error` → **always upload both reports** → fail the
+  job exactly when the analyzer exits non-zero. On *this* repository it is a
+  **living integration test**: the committed demo pins the vulnerable 2.14.1,
+  so the job fails by design with the JUnit XML attached; switching the pom to
+  2.25.5 makes it pass.
+- **`Jenkinsfile`** — declarative pipeline: `Build & SBOM` → `OSV cache`
+  (download once, `stash` across builds, pin verified on every build) →
+  `Reachability Analysis` → archive `reachability-report.*` on every outcome.
+  The pipeline fails naturally on analyzer exit 1/2/3; no special handling.
+  Requirements: JDK 25 + Maven on the agent; the analyzer builds with the
+  committed `./gradlew` wrapper.
+- **`.github/workflows/build-analyzer.yml`** — CI for the tool itself
+  (`./gradlew check` on push/PR).
 
 ## Bytecode-version guard
 

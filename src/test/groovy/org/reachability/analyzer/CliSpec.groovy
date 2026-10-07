@@ -441,6 +441,30 @@ class CliSpec extends Specification {
         !capturedOut.toString().contains("call graph")
     }
 
+    def "given a previous run's reports and a zero-candidate run when executed then the stale reports are removed"() {
+        given: "a report left behind by an earlier, vulnerable run"
+        File emptyDir = new File("build/tmp/osv-pipeline-empty")
+        emptyDir.mkdirs()
+        def staleJson = new File("build/tmp/m5-stale.json")
+        def staleXml = new File("build/tmp/m5-stale.junit.xml")
+        staleJson.text = '{"stale": true}'
+        staleXml.text = "<testsuite/>"
+
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", emptyDir.absolutePath,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--output", "build/tmp/m5-stale")
+
+        then: "the early exit must not leave a previous run's report behind"
+        exitCode == CliResult.OK.exitCode
+        capturedOut.toString().contains("No vulnerability candidates")
+        !staleJson.exists()
+        !staleXml.exists()
+    }
+
     def "given the pipeline without the required options when executed then exit usage error"() {
         when:
         int exitCode = runCli("--sbom", BOM_MINI, "--osv-dir", OSV_MINI)

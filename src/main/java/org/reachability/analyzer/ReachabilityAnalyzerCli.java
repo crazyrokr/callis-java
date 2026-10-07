@@ -27,6 +27,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -144,10 +145,22 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
             System.err.println("ERROR: analysis requires --sbom, --osv-dir and --app-classes");
             return CliResult.USAGE_ERROR.exitCode();
         }
+        List<Path> reportFiles = new ArrayList<>();
         for (String format : formats) {
             if (!format.equals("json") && !format.equals("junitxml")) {
                 System.err.println("ERROR: unknown report format: " + format + " (expected json, junitxml)");
                 return CliResult.USAGE_ERROR.exitCode();
+            }
+            Path reportFile = reportFile(format);
+            reportFiles.add(reportFile);
+            // A run that ends before report generation (zero candidates,
+            // analysis failure) must not leave a previous run's reports
+            // behind — they would be mistaken for this run's result.
+            try {
+                Files.deleteIfExists(reportFile);
+            } catch (IOException e) {
+                System.err.println("WARNING: cannot delete previous report "
+                        + reportFile + ": " + e.getMessage());
             }
         }
         ParsedSbom parsed = loadSbom();
@@ -294,10 +307,10 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
         AnalysisReport report = buildReport(System.currentTimeMillis() - started, context, result,
                 detected, repository, verdicts);
         List<String> written = new ArrayList<>();
-        for (String format : formats) {
-            Path file = reportFile(format);
+        for (int i = 0; i < formats.size(); i++) {
+            Path file = reportFiles.get(i);
             try {
-                if (format.equals("json")) {
+                if (formats.get(i).equals("json")) {
                     new JsonReportWriter().write(report, file);
                 } else {
                     new JUnitXmlReportWriter().write(report, file);

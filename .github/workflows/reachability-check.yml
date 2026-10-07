@@ -1,0 +1,86 @@
+# T62: reachability gate for a consumer project (plan.md Phase 6, A7/A12).
+#
+# On THIS repository the workflow is a living integration test (T65):
+# examples/vulnerable-demo pins log4j 2.14.1, so the job FAILS by design
+# with the JUnit XML report attached. Switching the demo's log4j.version
+# to the fixed release 2.25.5 makes it pass (verified 2026-10-07).
+#
+# To adopt for your own project: point the three --* arguments at your
+# target's classes / classpath file / CycloneDX SBOM (Maven and Gradle
+# variants below), and build the analyzer from this repository or from a
+# published artifact (./gradlew shadowJar).
+
+name: reachability-check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  reachability:
+    runs-on: ubuntu-latest
+    steps:
+      # A12: the Fat-JAR is Java 25 bytecode — run it with JDK 25.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      # A14: the OSV snapshot plus its sha256 pin (same value the analyzer
+      # computes; --osv-checksum below refuses a changed snapshot).
+      - name: Download OSV Maven snapshot
+        run: bash scripts/download-osv.sh osv-maven
+
+      # --- Target project: Maven (the committed example) -------------------
+      - name: "Build target (Maven: SBOM + dependency classpath)"
+        working-directory: examples/vulnerable-demo
+        run: |
+          mvn -B package
+          mvn -B dependency:build-classpath -Dmdep.outputFile=target/cp.txt
+        # --- Target project: Gradle alternative ----------------------------
+        # CycloneDX plugin (org.cyclonedx.bom) -> build/cyclonedx/bom.json:
+        #   ./gradlew cyclonedxBom
+        # and a small task that writes the resolved runtime classpath:
+        #   tasks.register("printClasspath") {
+        #       doLast {
+        #           file("target/cp.txt").writeText(
+        #               configurations.runtimeClasspath.joinToString(":") + "\n")
+        #       }
+        #   }
+        #   ./gradlew printClasspath
+
+      # The analyzer (built here from source; use a published artifact
+      # instead in a real consumer repository).
+      - name: Build the analyzer Fat-JAR
+        run: ./gradlew shadowJar
+
+      - name: Run reachability analysis
+        id: reachability
+        continue-on-error: true
+        run: |
+          java -jar build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
+            --app-classes=examples/vulnerable-demo/target/classes \
+            --classpath-file=examples/vulnerable-demo/target/cp.txt \
+            --sbom=examples/vulnerable-demo/target/bom.json \
+            --osv-dir=osv-maven \
+            --osv-checksum="$(cut -d' ' -f1 osv-maven.sha256)" \
+            --format=json,junitxml \
+            --output=reachability-report
+          # Optional: class/method-level verdicts for critical CVEs:
+          #   --mappings=vuln-mappings.json
+
+      # Always attach the reports — on failure they are the evidence.
+      - name: Upload reachability reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reachability-report
+          path: |
+            reachability-report.json
+            reachability-report.junit.xml
+
+      # Fail the job exactly when the analyzer said a vulnerability is
+      # reachable (exit 1) — or when the run itself was unusable (exit 2/3).
+      - name: Fail on reachable vulnerabilities
+        if: steps.reachability.outcome == 'failure'
+        run: exit 1
