@@ -22,14 +22,22 @@ import java.util.regex.Pattern;
  * an inclusive {@code last_affected N}, {@code < N} an exclusive
  * {@code fixed N} (verified 2026-10-06: the current dump uses only those
  * two shapes, 2,394 and 172 entries).
+ *
+ * <p>Severity (M5): the top-level {@code severity} array is kept as
+ * {@code "TYPE"} or {@code "TYPE: score"} strings; when absent, the
+ * top-level {@code database_specific.severity} level (e.g. {@code CRITICAL})
+ * is used. Severity is metadata — malformed entries are skipped, never
+ * rejected.
  */
 public record OsvRecord(String id, List<String> aliases, String summary,
-                        String withdrawnAt, List<AffectedPackage> affected) {
+                        String withdrawnAt, List<String> severities,
+                        List<AffectedPackage> affected) {
 
     private static final Pattern UPPER_BOUND = Pattern.compile("<\\s*(=?)\\s*([0-9][0-9A-Za-z._\\-]*)");
 
     public OsvRecord {
         aliases = List.copyOf(aliases);
+        severities = List.copyOf(severities);
         affected = List.copyOf(affected);
     }
 
@@ -56,6 +64,7 @@ public record OsvRecord(String id, List<String> aliases, String summary,
         }
         String summary = root.hasNonNull("summary") ? root.get("summary").asText() : "";
         String withdrawnAt = parseWithdrawn(root.get("withdrawn"));
+        List<String> severities = parseSeverities(root);
 
         JsonNode affectedNode = root.get("affected");
         if (affectedNode == null || !affectedNode.isArray() || affectedNode.isEmpty()) {
@@ -65,7 +74,36 @@ public record OsvRecord(String id, List<String> aliases, String summary,
         for (JsonNode entry : affectedNode) {
             affected.add(parseAffected(id, entry));
         }
-        return new OsvRecord(id, aliases, summary, withdrawnAt, affected);
+        return new OsvRecord(id, aliases, summary, withdrawnAt, severities, affected);
+    }
+
+    private static List<String> parseSeverities(JsonNode root) {
+        List<String> severities = new ArrayList<>();
+        for (JsonNode severity : root.path("severity")) {
+            if (!severity.isObject()) {
+                continue;
+            }
+            JsonNode type = severity.get("type");
+            if (type == null || !type.isTextual() || type.asText().isEmpty()) {
+                continue;
+            }
+            JsonNode score = severity.get("score");
+            if (score != null && score.isTextual() && !score.asText().isEmpty()) {
+                severities.add(type.asText() + ": " + score.asText());
+            } else {
+                severities.add(type.asText());
+            }
+        }
+        if (severities.isEmpty()) {
+            JsonNode databaseSpecific = root.get("database_specific");
+            if (databaseSpecific != null && databaseSpecific.isObject()) {
+                JsonNode level = databaseSpecific.get("severity");
+                if (level != null && level.isTextual() && !level.asText().isEmpty()) {
+                    severities.add(level.asText());
+                }
+            }
+        }
+        return severities;
     }
 
     private static String parseWithdrawn(JsonNode node) {

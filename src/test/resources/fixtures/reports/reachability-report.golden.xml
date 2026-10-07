@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="reachability" tests="3" failures="1" errors="0" skipped="2" time="0.382">
+  <testcase name="VULN-POS pkg:maven/stublib/stublib@1.0" classname="reachability">
+    <failure message="reachable">
+      demo.MainDanger#main -&gt; stublib.Stub#danger
+    </failure>
+  </testcase>
+  <testcase name="VULN-NEG pkg:maven/stublib/stublib@1.0" classname="reachability">
+    <skipped message="unreachable: artifact present in classpath but no static path found - possible reflection/dynamic dispatch risk"/>
+  </testcase>
+  <testcase name="VULN-GONE pkg:maven/nope/Gone@1.0" classname="reachability">
+    <skipped message="unreachable: artifact not on classpath - no class info"/>
+  </testcase>
+</testsuite>

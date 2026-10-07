@@ -1,0 +1,44 @@
+{
+  "metadata" : {
+    "toolVersion" : "0.1.0-SNAPSHOT",
+    "callGraphBuilder" : "RTA",
+    "entryPointCount" : 3,
+    "callGraphNodes" : 27,
+    "callGraphCalls" : 44,
+    "durationMillis" : 382,
+    "maxBytecodeMajor" : 61,
+    "osvSnapshotSha256" : "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "osvSkippedRecords" : 2
+  },
+  "vulnerabilities" : [ {
+    "id" : "VULN-POS",
+    "purl" : "pkg:maven/stublib/stublib@1.0",
+    "component" : "stublib",
+    "componentVersion" : "1.0",
+    "verdict" : "REACHABLE",
+    "onClasspath" : true,
+    "severity" : [ "CVSS_V3: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" ],
+    "affectedRange" : "range#0 (introduced=0, fixed=2.0)",
+    "path" : [ "demo.MainDanger#main", "stublib.Stub#danger" ]
+  }, {
+    "id" : "VULN-NEG",
+    "purl" : "pkg:maven/stublib/stublib@1.0",
+    "component" : "stublib",
+    "componentVersion" : "1.0",
+    "verdict" : "UNREACHABLE",
+    "onClasspath" : true,
+    "severity" : [ ],
+    "affectedRange" : "versions",
+    "path" : [ ]
+  }, {
+    "id" : "VULN-GONE",
+    "purl" : "pkg:maven/nope/Gone@1.0",
+    "component" : "nope:Gone",
+    "componentVersion" : "1.0",
+    "verdict" : "UNREACHABLE",
+    "onClasspath" : false,
+    "severity" : [ "HIGH" ],
+    "affectedRange" : "range#0 (introduced=0, last_affected=1.0)",
+    "path" : [ ]
+  } ]
+}

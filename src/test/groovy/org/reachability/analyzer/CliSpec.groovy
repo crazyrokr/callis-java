@@ -1,5 +1,6 @@
 package org.reachability.analyzer
 
+import org.reachability.analyzer.analysis.TestPermissions
 import org.reachability.analyzer.osv.SnapshotChecksum
 import picocli.CommandLine
 import spock.lang.Specification
@@ -35,6 +36,9 @@ class CliSpec extends Specification {
     def cleanup() {
         System.setOut(originalOut)
         System.setErr(originalErr)
+        // The default --output writes reports next to the working directory
+        new File("reachability-report.json").delete()
+        new File("reachability-report.junit.xml").delete()
     }
 
     def "given help flag when executed then usage printed and exit zero"() {
@@ -488,5 +492,116 @@ class CliSpec extends Specification {
         then: "CHA is less precise but the same mapped call is still reachable"
         exitCode == CliResult.REACHABLE_VULNERABILITIES.exitCode
         capturedOut.toString().contains("CRITICAL: VULN-POS")
+    }
+
+    // ------------------------------------------------------------------
+    // M5 T51-T54: the reporting engine (JSON + JUnit XML + console table).
+    // ------------------------------------------------------------------
+
+    private static final String M5_REPORT = "build/tmp/m5-report"
+
+    def "given a reachable vulnerability in the pipeline when executed then both reports are written next to the output base name"() {
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", MAPPINGS,
+                "--output", M5_REPORT)
+
+        then: "the JSON report carries the verdict, the purl, the OSV severity and the range evidence"
+        exitCode == CliResult.REACHABLE_VULNERABILITIES.exitCode
+        def json = new File(M5_REPORT + ".json").text
+        json.contains('"verdict" : "REACHABLE"')
+        json.contains("pkg:maven/stublib/stublib@1.0")
+        json.contains("CVSS_V3")
+        json.contains("range#0 (introduced=0, fixed=2.0)")
+        json.contains("demo.MainDanger#main")
+
+        and: "the JUnit XML suite fails exactly because the pipeline must fail"
+        def xml = new File(M5_REPORT + ".junit.xml").text
+        xml.contains("<testsuite name=\"reachability\" tests=\"1\" failures=\"1\"")
+        xml.contains("<failure message=\"reachable\">")
+        xml.contains("demo.MainDanger#main -&gt; stublib.Stub#danger")
+    }
+
+    def "given the pipeline with only the json format when executed then only the json report is written"() {
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", MAPPINGS,
+                "--entry-points", "demo.Main#main",
+                "--format", "json",
+                "--output", "build/tmp/m5-json-only")
+
+        then:
+        exitCode == CliResult.OK.exitCode
+        new File("build/tmp/m5-json-only.json").exists()
+        !new File("build/tmp/m5-json-only.junit.xml").exists()
+    }
+
+    def "given an unknown report format when executed then exit usage error"() {
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--format", "html")
+
+        then:
+        exitCode == CliResult.USAGE_ERROR.exitCode
+        capturedErr.toString().contains("unknown report format")
+        capturedErr.toString().contains("html")
+    }
+
+    def "given a non-writable report destination when executed then exit analysis failure"() {
+        given:
+        File dir = new File("build/tmp/m5-readonly")
+        dir.mkdirs()
+        TestPermissions.withoutOwnerWrite(dir.toPath())
+
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", MAPPINGS,
+                "--entry-points", "demo.Main#main",
+                "--output", dir.absolutePath + "/report")
+
+        then:
+        exitCode == CliResult.ANALYSIS_FAILURE.exitCode
+        capturedErr.toString().contains("cannot write report")
+
+        cleanup:
+        TestPermissions.ownerReadWriteExecute(dir.toPath())
+    }
+
+    def "given a reachable vulnerability in the pipeline with verbose when executed then the summary table and the written reports are printed"() {
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", MAPPINGS,
+                "--output", "build/tmp/m5-verbose",
+                "-v")
+
+        then: "the T54 table shows id, component, verdict and the path head; verbose names the written files"
+        exitCode == CliResult.REACHABLE_VULNERABILITIES.exitCode
+        def out = capturedOut.toString()
+        out.contains("VULN ID")
+        out.contains("PATH")
+        out.contains("REACHABLE")
+        out.contains("demo.MainDanger#main")
+        out.contains("reports written")
+        out.contains("build/tmp/m5-verbose.json")
     }
 }

@@ -50,7 +50,8 @@ class ReachabilityCheckerSpec extends Specification {
     }
 
     private static VulnerabilityCandidate candidate(String id, String component, String version) {
-        new VulnerabilityCandidate(id, [], "Test vulnerability", component, version, component, ["ranges: 0 -> 2.0"])
+        new VulnerabilityCandidate(id, [], "Test vulnerability", component, version,
+                "pkg:maven/" + component.replace(":", "/") + "@" + version, [], component, ["ranges: 0 -> 2.0"])
     }
 
     def "given a reachable mapped method when checked then the verdict is REACHABLE with the method-level path"() {

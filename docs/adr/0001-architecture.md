@@ -369,3 +369,47 @@ parse/path work dominates.
   Jackson `NullNode`-vs-`null` distinctions, `&&`/`||` short-circuit
   sub-conditions — kept as guards in the same spirit as the M3
   `OutOfMemoryError` catches.
+- **2026-10-07 (M5 verification):** report model (T51). `AnalysisReport` is
+  run metadata (tool version, CG builder, entry-point count, CG
+  node/call counts, duration, detected target bytecode major, OSV snapshot
+  sha256, OSV parse-skip count) plus one entry per candidate: id, component
+  **purl** (the SBOM purl verbatim, qualifiers included — e.g.
+  `…log4j-core@2.14.1?type=jar`), `REACHABLE|UNREACHABLE` (the
+  NO_CLASS_INFO state reports UNREACHABLE with onClasspath=false),
+  onClasspath, `severity`, `affectedRange`, `path[]`. Severity (T51) comes
+  from the OSV top-level `severity` array as `TYPE` or `TYPE: score`
+  strings, falling back to `database_specific.severity` (e.g. `CRITICAL`);
+  both parses are **lenient** — severity is metadata, malformed entries are
+  skipped, never record-rejecting (contrast the strict ADR-0001 M2 core
+  fields). `affectedRange` is the matcher's evidence joined
+  (`range#0 (introduced=0, fixed=2.0)` / `versions`). `OsvRecord` gained a
+  `severities` field and `VulnerabilityCandidate` gained `purl` +
+  `severities` (one candidate per (record, component), so the record's
+  severity flows to the candidate).
+- **2026-10-07 (M5 verification):** writers (T52/T53). `JsonReportWriter`
+  serializes via Jackson `ObjectNode` — key order is the model's
+  declaration order (insertion order), so output is byte-stable; the
+  committed golden `fixtures/reports/reachability-report.golden.json` is
+  re-recorded from the writer's own output (Jackson 2.22
+  `DefaultPrettyPrinter` renders arrays inline, `[ { … } ]`). Absent
+  optional metadata (bytecode major, OSV sha256) serializes as JSON `null`.
+  `JUnitXmlReportWriter` emits one `<testsuite name="reachability">` and
+  one `<testcase name="&lt;id&gt; &lt;purl&gt;">` per candidate:
+  REACHABLE ⇒ `<failure message="reachable">` with the call trace in the
+  body; UNREACHABLE ⇒ pass with a `<skipped>` note (onClasspath ⇒
+  "artifact present in classpath … possible reflection/dynamic dispatch
+  risk", A14; otherwise ⇒ "artifact not on classpath — no class info").
+  **The suite fails exactly when the pipeline must fail (exit 1)** —
+  `failures` equals the reachable count, so CI badges stay honest. All five
+  XML specials are escaped (pinned: `& < > " '` round-trip through a DOM
+  parse). Golden `…golden.xml` committed; both writers at
+  **LINE 87/87 = 1.0** (gate active from M5).
+- **2026-10-07 (M5 verification):** console + CLI (T54). The M4
+  CRITICAL/NOTICE lines are kept; a summary table (id, component, verdict,
+  **path head** only) is added so the console never duplicates the full
+  report. `--verbose` names the written files and the duration. Unknown
+  `--format` token ⇒ exit 2; a non-writable report destination ⇒
+  **exit 3** (parent directories are created when absent). `osv-mini/
+  VULN-POS.json` gained a `severity` array so the pipeline report carries
+  real severity end-to-end. Coverage: osv LINE 262/262 = 1.0,
+  BRANCH 187/198 = 0.9444; analysis unchanged at 272/288 = 0.9444.

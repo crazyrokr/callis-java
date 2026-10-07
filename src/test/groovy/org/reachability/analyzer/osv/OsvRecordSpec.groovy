@@ -45,6 +45,7 @@ class OsvRecordSpec extends Specification {
         def events = record.affected().get(0).ranges().get(0).events()
         events.contains(new VersionEvent("introduced", "2.13.0"))
         events.contains(new VersionEvent("fixed", "2.15.0"))
+        record.severities() == ["CVSS_V3: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H/E:H"]
     }
 
     def "given the real withdrawn record when parsed then withdrawn is flagged"() {
@@ -292,6 +293,85 @@ class OsvRecordSpec extends Specification {
         then:
         record.aliases() == ["CVE-X"]
         record.summary() == ""
+    }
+
+    def "given a severity entry without a score when parsed then the type alone is kept"() {
+        given:
+        def node = obj()
+        node.put("id", "GHSA-6")
+        node.set("severity", arr(obj().put("type", "CVSS_V3")))
+        node.set("affected", arr(affectedEntry("g:n", null, ["1.0"], null)))
+
+        when:
+        def record = OsvRecord.parse(node)
+
+        then:
+        record.severities() == ["CVSS_V3"]
+    }
+
+    def "given severity entries of mixed types when parsed then only object entries with a non-empty type are kept"() {
+        given:
+        def node = obj()
+        node.put("id", "GHSA-7")
+        node.set("severity", arr(MAPPER.getNodeFactory().textNode("plain"),
+                obj(),
+                obj().put("type", ""),
+                obj().put("type", "CVSS_V4").put("score", "CVSS:4.0/vector")))
+        node.set("affected", arr(affectedEntry("g:n", null, ["1.0"], null)))
+
+        when:
+        def record = OsvRecord.parse(node)
+
+        then:
+        record.severities() == ["CVSS_V4: CVSS:4.0/vector"]
+    }
+
+    def "given a record without a severity array but a top-level database_specific severity when parsed then the level is used"() {
+        given:
+        def node = obj()
+        node.put("id", "GHSA-8")
+        def db = obj()
+        db.put("severity", "HIGH")
+        node.set("database_specific", db)
+        node.set("affected", arr(affectedEntry("g:n", null, ["1.0"], null)))
+
+        when:
+        def record = OsvRecord.parse(node)
+
+        then:
+        record.severities() == ["HIGH"]
+    }
+
+    def "given a database_specific without a severity field when parsed then no severity is derived"() {
+        given:
+        def node = obj()
+        node.put("id", "GHSA-9")
+        def db = obj()
+        db.put("cwe_ids", "CWE-20")
+        node.set("database_specific", db)
+        node.set("affected", arr(affectedEntry("g:n", null, ["1.0"], null)))
+
+        when:
+        def record = OsvRecord.parse(node)
+
+        then:
+        record.severities().isEmpty()
+    }
+
+    def "given a database_specific with a non-text severity when parsed then no severity is derived"() {
+        given:
+        def node = obj()
+        node.put("id", "GHSA-10")
+        def db = obj()
+        db.put("severity", MAPPER.getNodeFactory().numberNode(4))
+        node.set("database_specific", db)
+        node.set("affected", arr(affectedEntry("g:n", null, ["1.0"], null)))
+
+        when:
+        def record = OsvRecord.parse(node)
+
+        then:
+        record.severities().isEmpty()
     }
 
     def "given a withdrawn field that is null when parsed then the record is not withdrawn"() {

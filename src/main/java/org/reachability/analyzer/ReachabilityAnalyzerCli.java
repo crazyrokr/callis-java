@@ -13,6 +13,9 @@ import org.reachability.analyzer.osv.OsvRepository;
 import org.reachability.analyzer.osv.SnapshotChecksum;
 import org.reachability.analyzer.osv.VulnerabilityCandidate;
 import org.reachability.analyzer.osv.VulnerabilityCandidates;
+import org.reachability.analyzer.report.AnalysisReport;
+import org.reachability.analyzer.report.JUnitXmlReportWriter;
+import org.reachability.analyzer.report.JsonReportWriter;
 import sootup.core.signatures.MethodSignature;
 import sootup.java.core.views.JavaView;
 import org.reachability.analyzer.sbom.ParsedSbom;
@@ -130,14 +133,22 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
     /**
      * M4 T44: the full pipeline — SBOM + OSV candidates, then bytecode
      * guard, view, entry points, call graph, and per-candidate verdicts.
-     * Exit 1 when any candidate is REACHABLE, 0 otherwise; 2 for usage
-     * errors; 3 for analysis failures.
+     * M5 T51-T54: verdicts become the JSON + JUnit XML reports (per
+     * --format) and the console summary table. Exit 1 when any candidate
+     * is REACHABLE, 0 otherwise; 2 for usage errors; 3 for analysis
+     * failures (including an unwritable report destination).
      */
     private int analyze() {
         long started = System.currentTimeMillis();
         if (sbom == null || osvDir == null || appClasses == null) {
             System.err.println("ERROR: analysis requires --sbom, --osv-dir and --app-classes");
             return CliResult.USAGE_ERROR.exitCode();
+        }
+        for (String format : formats) {
+            if (!format.equals("json") && !format.equals("junitxml")) {
+                System.err.println("ERROR: unknown report format: " + format + " (expected json, junitxml)");
+                return CliResult.USAGE_ERROR.exitCode();
+            }
         }
         ParsedSbom parsed = loadSbom();
         if (parsed == null) {
@@ -278,11 +289,85 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
             }
         }
         System.out.println(candidates.size() + " candidate(s): " + reachableCount + " reachable");
+        printVerdictTable(verdicts);
+
+        AnalysisReport report = buildReport(System.currentTimeMillis() - started, context, result,
+                detected, repository, verdicts);
+        List<String> written = new ArrayList<>();
+        for (String format : formats) {
+            Path file = reportFile(format);
+            try {
+                if (format.equals("json")) {
+                    new JsonReportWriter().write(report, file);
+                } else {
+                    new JUnitXmlReportWriter().write(report, file);
+                }
+                written.add(file.toString());
+            } catch (IOException e) {
+                System.err.println("ERROR: cannot write report " + file + ": " + e.getMessage());
+                return CliResult.ANALYSIS_FAILURE.exitCode();
+            }
+        }
         if (verbose) {
+            System.out.println("reports written: " + String.join(", ", written));
             System.out.println("analysis took " + (System.currentTimeMillis() - started)
                     + " ms (call graph: " + result.buildMillis() + " ms)");
         }
         return reachableCount > 0 ? CliResult.REACHABLE_VULNERABILITIES.exitCode() : CliResult.OK.exitCode();
+    }
+
+    /** M5 T54: the console summary table — id, component, verdict, path head. */
+    private void printVerdictTable(List<ReachabilityChecker.Verdict> verdicts) {
+        String[] header = {"VULN ID", "COMPONENT", "VERDICT", "PATH"};
+        List<String[]> rows = new ArrayList<>();
+        for (ReachabilityChecker.Verdict verdict : verdicts) {
+            VulnerabilityCandidate candidate = verdict.candidate();
+            String pathHead = verdict.path().isEmpty() ? "-" : verdict.path().get(0);
+            rows.add(new String[]{candidate.vulnId(), candidate.componentName(),
+                    verdict.status().name(), pathHead});
+        }
+        int[] widths = columnWidths(header, rows);
+        System.out.printf(format(widths), header);
+        for (String[] row : rows) {
+            System.out.printf(format(widths), row);
+        }
+    }
+
+    /** M5 T51: assembles the report model from the run's measured state. */
+    private AnalysisReport buildReport(long durationMillis, AnalysisContext context,
+                                       CallGraphFactory.BuildResult result, List<MethodSignature> detected,
+                                       OsvRepository repository, List<ReachabilityChecker.Verdict> verdicts) {
+        String osvSha256 = null;
+        try {
+            osvSha256 = SnapshotChecksum.sha256OfDirectory(osvDir);
+        } catch (IOException e) {
+            System.err.println("WARNING: cannot hash OSV directory: " + e.getMessage());
+        }
+        AnalysisReport.ReportMetadata metadata = new AnalysisReport.ReportMetadata(
+                "0.1.0-SNAPSHOT", cha ? "CHA" : "RTA", detected.size(),
+                result.nodeCount(), result.edgeCount(), durationMillis,
+                context.maxBytecodeMajor(), osvSha256,
+                repository.fileCount() - repository.validRecordCount());
+        List<AnalysisReport.VulnerabilityEntry> entries = new ArrayList<>();
+        for (ReachabilityChecker.Verdict verdict : verdicts) {
+            VulnerabilityCandidate candidate = verdict.candidate();
+            entries.add(new AnalysisReport.VulnerabilityEntry(
+                    candidate.vulnId(), candidate.purl(), candidate.componentName(),
+                    candidate.componentVersion(),
+                    verdict.status() == ReachabilityChecker.VerdictStatus.REACHABLE ? "REACHABLE" : "UNREACHABLE",
+                    verdict.onClasspath(), candidate.severities(),
+                    String.join("; ", candidate.matchedBy()), verdict.path()));
+        }
+        return new AnalysisReport(metadata, entries);
+    }
+
+    /** {@code <output>.json} or {@code <output>.junit.xml} per the format token. */
+    private Path reportFile(String format) {
+        Path fileName = output.getFileName();
+        String base = fileName == null ? output.toString() : fileName.toString();
+        String suffix = format.equals("json") ? ".json" : ".junit.xml";
+        Path parent = output.getParent();
+        return parent == null ? Path.of(base + suffix) : parent.resolve(base + suffix);
     }
 
     private int dryRunSbom() {
