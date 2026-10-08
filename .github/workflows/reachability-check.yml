@@ -58,7 +58,7 @@ jobs:
         id: reachability
         continue-on-error: true
         run: |
-          java -jar build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
+          java -jar cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
             --app-classes=examples/vulnerable-demo/target/classes \
             --classpath-file=examples/vulnerable-demo/target/cp.txt \
             --sbom=examples/vulnerable-demo/target/bom.json \

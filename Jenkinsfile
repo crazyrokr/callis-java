@@ -17,7 +17,7 @@ pipeline {
 
     environment {
         OSV_DIR = 'osv-maven'
-        ANALYZER_JAR = 'build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar'
+        ANALYZER_JAR = 'cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar'
         TARGET_DIR = 'examples/vulnerable-demo'
     }
 

@@ -9,7 +9,17 @@ REACHABLE / UNREACHABLE verdicts with call traces → JSON + JUnit XML reports.
 Exit code `1` on any reachable vulnerability (fail the pipeline), `0` otherwise
 (`2` = usage error, `3` = analysis failure).
 
-Status: v1 complete (M0–M6 of `implementation-plan.md`); M7 is stretch-only.
+Status: v1 complete (M0–M6 of `implementation-plan.md`); M7 (stretch) in
+progress — M7a done (multi-module split + engine facade).
+
+## Module layout (M7a)
+
+Multi-module Gradle build: `core` holds the whole analysis pipeline (SBOM/OSV
+parsing, SootUp call graph, verdicts, reports) plus the `AnalyzerEngine`
+facade both front ends call; `cli` is the picocli front-end + Shadow fat JAR
+(`cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar`);
+`tools:coveragetool` runs the per-package coverage gates against core's
+JaCoCo data.
 
 ## Pinned toolchain & dependencies (verified 2026-10-05)
 
@@ -48,7 +58,7 @@ mvn -B dependency:build-classpath -Dmdep.outputFile=target/cp.txt
 cd ../..
 
 # 4. Analyze
-java -jar build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
+java -jar cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
   --app-classes=examples/vulnerable-demo/target/classes \
   --classpath-file=examples/vulnerable-demo/target/cp.txt \
   --sbom=examples/vulnerable-demo/target/bom.json \

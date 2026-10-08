@@ -4,8 +4,12 @@ out/
 osv-maven/
 osv-maven.sha256
 *.class
-!src/test/resources/**/*.class
-!src/test/resources/**/*.jar
+# Fixture binaries are generated from committed sources before tests run
+# (core build: compileFixtureApp/stublibJar/generateFixtureBytecode).
+core/src/test/resources/fixtures/mini-app/classes/
+core/src/test/resources/fixtures/mini-app/stublib.jar
+core/src/test/resources/fixtures/bytecode/v69/*.class
+core/src/test/resources/fixtures/bytecode/v70/*.class
 .idea/
 *.iml
 .vscode/
@@ -13,5 +17,5 @@ osv-maven.sha256
 cp.txt
 target/
 reachability-report*
-!src/test/resources/fixtures/reports/reachability-report.*
+!core/src/test/resources/fixtures/reports/reachability-report.*
 build-out/

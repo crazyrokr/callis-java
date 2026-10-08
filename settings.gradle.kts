@@ -6,3 +6,7 @@ pluginManagement {
         mavenCentral()
     }
 }
+
+include("core")
+include("cli")
+include("tools:coveragetool")

@@ -23,7 +23,8 @@ critical CVEs.
 class files up to major version 69 (Java 25), verified 2026-10-05. For unsupported
 versions SootUp **silently** returns zero classes (verified: v69 under 2.0.0,
 hand-crafted v70 under 3.0.1) — hence the A12 startup guard and the
-`BytecodeCeilingSpec` regression fixture committed in M0.
+`BytecodeCeilingSpec` regression fixture (its probe binaries are generated
+at build time since M7a; see A12).
 
 ## Decisions
 
@@ -87,10 +88,17 @@ Per plan Phase 5. One `<testcase>` per vulnerability; REACHABLE ⇒ `<failure>`
 with the call trace, UNREACHABLE ⇒ pass (badges fail exactly when the pipeline
 must fail).
 
-### A10 — Single Gradle project for v1
+### A10 — Single Gradle project for v1, multi-module from M7a
 
-Split `core`/`cli` (and add Gradle/Maven plugins) only when a library consumer
-appears — that split is the M7 trigger for plugin work.
+v1 was a single Gradle project; split `core`/`cli` (and add Gradle/Maven
+plugins) only when a library consumer appears — that split is the M7 trigger
+for plugin work. **M7a (2026-10-07) realized the split:** root aggregator +
+`core` (sbom/osv/analysis/report + the new `engine` package), `cli`
+(picocli + shadow fat JAR), `tools:coveragetool`. `core:engine.AnalyzerEngine`
+is the in-process seam the M7e plugins call — the whole M4/M5 pipeline plus
+report generation behind `analyze(AnalysisRequest, output, formats, verbose,
+DiagnosticSink)`, console I/O abstracted so the CLI and plugins surface the
+same diagnostics with the same exit codes.
 
 ### A11 — Spock (Groovy 4) as the test framework
 
@@ -109,7 +117,14 @@ pass under 25; SootUp 3.0.1 runs under 25 and parses v69 class files. SootUp
 target built with newer bytecode would pass with zero findings (false negative).
 M3 keeps a startup guard: probe max class-file major version + zero-classes-from-
 non-empty-directory check → **exit 3** beyond the supported ceiling. Regression
-fixtures (`fixtures/bytecode/v69`, `fixtures/bytecode/v70`) committed in M0.
+fixtures (`fixtures/bytecode/v69`, `fixtures/bytecode/v70`); since M7a they are
+generated at build time (v69 compiled from its committed source; v70 = the
+61-byte hand-crafted probe reproduced from a hex constant — no fixture
+binary has been in the git history since the 2026-10-08 rewrite).
+Note: SootUp 3.0.1's ASM
+**does** parse fully valid v70 classes — the zero-classes contract holds only
+for the deliberately unparseable probe body, which is why the probe stays
+hand-crafted bytes rather than compiled output.
 
 ### A13 — Bounded callback-interface entry points
 
@@ -449,3 +464,58 @@ parse/path work dominates.
   delete is impossible). Regression: CliSpec pre-creates reports, runs a
   zero-candidate pipeline into the same base name, and asserts both are gone
   (exit 0).
+- **2026-10-07 (M7a):** multi-module split + engine facade (A10).
+  * Structure: root aggregator + `core`, `cli`, `tools:coveragetool`;
+    per-module Checkstyle/JaCoCo/SpotBugs; the coverage gates re-target
+    core's exec data (thresholds unchanged, all green). SootUp modules are
+    declared `api` in core because SootUp types leak through public
+    signatures (`SootUpSetup`, `CallGraphFactory.BuildResult`) — plain
+    `implementation` broke the cli compile.
+  * `engine.AnalyzerEngine.analyze(AnalysisRequest, output, formats,
+    verbose, DiagnosticSink)` owns the full pipeline; the CLI shrinks to
+    options → `AnalysisRequest` + the engine's exit code (dry-run modes
+    stay CLI-only). Console output stayed byte-identical: the unchanged
+    CliSpec is the net, and the rebuilt fat JAR replays the demo
+    identically (2.14.1 → exit 1, 8 REACHABLE, JSON equal ignoring
+    duration; 2.25.5 → exit 0).
+  * Records with mutable components (`AnalysisRequest`) copy in a compact
+    constructor (`List.copyOf`/`Map.copyOf`): SpotBugs 4.10.4 reports
+    EI_EXPOSE_REP/EI_EXPOSE_REP2 for record accessors/constructors that
+    expose raw collections — the same convention `VulnerabilityCandidate`
+    already used (verified with a probe record against the pinned
+    SpotBugs version).
+  * Gradle 9.8.0 gotcha (empirical, bbb/aaa/ccc experiment): subprojects
+    evaluate in **alphabetical** order, not `settings.gradle.kts` include
+    order → cross-project source-set access at configuration time is
+    unreliable in both directions. Cross-module test dependencies go
+    through `java-test-fixtures` (core's TestPermissions consumed by the
+    cli test) and task-level wiring (coveragetool's `test` depends on
+    core's `test` and consumes the exec/classes dirs via system
+    properties).
+  * True test total is 358 (core 287 + cli 40 + coveragetool 31); the
+    engine spec adds 9 (367). The older "327" figure had missed the
+    separate `coverageGateTest` results directory (31 tests).
+  * Fixture de-binary-ization: the then-committed fixture binaries (49
+    mini-app classes, stublib.jar, 2 bytecode probes) are removed from
+    the repo — and from the entire git history (2026-10-08 rewrite;
+    the only tracked binary in any commit is now the Gradle wrapper
+    jar); `core` build tasks regenerate them before any test
+    (mini-app: compileFixtureLib → stublibJar (JarOutputStream) →
+    compileFixtureApp against the full lib dir, as the M3 recipe did;
+    v69 probe compiled, v70 probe reproduced byte-exact from the
+    hand-crafted 61-byte probe's hex — a valid v70 class would parse
+    under SootUp 3.0.1's ASM and break the zero-classes contract).
+    Generated paths are gitignored; the M3 manual rebuild recipe is
+    replaced by the tasks. Verified before the history rewrite:
+    49/49 mini-app classes rebuild byte-identical under javac 25.0.3
+    (stublib.jar identical modulo entry metadata); the generated v70
+    is byte-identical to the then-committed M0 file.
+  * Gradle 9.8.0 build-script gotchas hit while wiring the generators:
+    cross-project task references from :cli must be live `matching{}`
+    queries (:cli evaluates first, alphabetically — `named()` is strict
+    at call time); `AbstractArchiveTask` lost its destination setter
+    (and `ProjectFile`/`Directory.asFile` resolve oddly), so stublib.jar
+    is written with a plain Task + JarOutputStream; `include("*.java")`
+    does not match nested files (use `**/*.java`); and a generator
+    writing into `src/test/resources` must be an explicit dependency of
+    `processTestResources` (implicit-dependency validation).
