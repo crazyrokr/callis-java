@@ -10,7 +10,8 @@ Exit code `1` on any reachable vulnerability (fail the pipeline), `0` otherwise
 (`2` = usage error, `3` = analysis failure).
 
 Status: v1 complete (M0–M6 of `implementation-plan.md`); M7 (stretch) in
-progress — M7a done (multi-module split + engine facade).
+progress — M7a done (multi-module split + engine facade), M7b done
+(`--pointer-analysis` SPARK pointer-analysis mode).
 
 ## Module layout (M7a)
 
@@ -88,6 +89,7 @@ snapshot; verified 2026-10-07).
 | `--entry-points=<class#method,…>` | Explicit entry points; wins over auto-detection |
 | `--callback-interfaces=<class#method,…>` | Additional callback interfaces for entry-point detection (extends the curated list, A13) |
 | `--cha` | Build the call graph with CHA instead of RTA |
+| `--pointer-analysis` | Build the call graph with SPARK object-sensitive pointer analysis instead of RTA (M7b; mutually exclusive with `--cha`, slower, prunes dispatch to receivers that are instantiated but never used at the call site) |
 | `--java-version=<n>` | Expected Java version of the target (informational hint for the guard) |
 | `--format=json,junitxml` | Report formats to write (comma-separated; unknown token ⇒ exit 2) |
 | `--output=<base>` | Base name for the generated reports (`<base>.json`, `<base>.junit.xml`) |
@@ -131,9 +133,15 @@ absent from the call graph is UNREACHABLE (not an error).
   a reachable *safe* class of the artifact still yields REACHABLE. OSV Maven
   carries no class/method data (0 of 7,163 current records do), so this is the
   honest default; `--mappings` narrows it per CVE.
-- **RTA (default) vs CHA (`--cha`).** RTA prunes to the reachable set from the
-  entry points — fewer false positives, and it is what the gate relies on. CHA
-  keeps dead code and over-approximates: use it to *compare*, not to pass.
+- **RTA (default) vs CHA (`--cha`) vs SPARK (`--pointer-analysis`).** RTA prunes
+  to the reachable set from the entry points (SootUp 3.0.1's RTA already
+  expands a virtual call only to *instantiated* subtypes) — fewer false
+  positives, and it is what the gate relies on. CHA keeps dead code and
+  over-approximates: use it to *compare*, not to pass. SPARK (M7b, A5) is the
+  most precise, opt-in mode: its points-to analysis adds a call edge only when
+  the receiver can actually point at the target, so an implementation that is
+  instantiated somewhere but never dispatched at a call site is pruned
+  (the RTA/CHA false positive).
 - **Reflection / dynamic dispatch** (Spring wiring, `Class.forName`, SPI)
   defeats any static call graph. An artifact that is on the classpath but has
   no static path is reported UNREACHABLE **with `onClasspath: true`** and a

@@ -82,9 +82,11 @@ class EntryPointDetectorSpec extends Specification {
         has(entryPoints, "demo.FilterImpl", "doFilter")
         has(entryPoints, "demo.VulnCaller", "main")
         has(entryPoints, "demo.VulnCaller2", "main")
+        has(entryPoints, "demo.PointerDemo", "main")
+        has(entryPoints, "demo.PointerDemo2", "main")
 
-        and: "the full expected set: 21 entry points"
-        entryPoints.size() == 21
+        and: "the full expected set: 23 entry points"
+        entryPoints.size() == 23
 
         and: "doGet methods without a servlet superclass or annotation are NOT entries"
         !has(entryPoints, "demo.NoSuper", "doGet")
@@ -188,7 +190,7 @@ class EntryPointDetectorSpec extends Specification {
                 ["org.quartz.Job": ["run"]])
 
         then: "the default callback entries are untouched"
-        entryPoints.size() == 21
+        entryPoints.size() == 23
         has(entryPoints, "demo.QuartzJobImpl", "execute")
         detector.warnings().isEmpty()
     }
@@ -204,7 +206,7 @@ class EntryPointDetectorSpec extends Specification {
 
         then: "the plain business interface is now a callback: run() becomes an entry point"
         has(entryPoints, "demo.BusinessService", "run")
-        entryPoints.size() == 22
+        entryPoints.size() == 24
     }
 
     def "given a bare fake model class when detected then the no-annotation fallbacks return empty"() {

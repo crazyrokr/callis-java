@@ -1,5 +1,7 @@
 package org.reachability.analyzer.analysis
 
+import org.reachability.analyzer.engine.CallGraphPolicy
+
 import sootup.callgraph.CallGraph
 import sootup.core.signatures.MethodSignature
 import sootup.core.signatures.PackageName
@@ -51,7 +53,7 @@ class CallPathFinderSpec extends Specification {
     }
 
     private CallGraph graph(List<String> overrides) {
-        CallGraphFactory.build(view, entries(overrides), false).graph()
+        CallGraphFactory.build(view, entries(overrides), CallGraphPolicy.RTA).graph()
     }
 
     def "given the positive chain when a path is found then the three hops appear in call order"() {

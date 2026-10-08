@@ -1,5 +1,7 @@
 package org.reachability.analyzer.analysis
 
+import org.reachability.analyzer.engine.CallGraphPolicy
+
 import sootup.callgraph.CallGraph
 import sootup.core.signatures.MethodSignature
 import sootup.java.core.views.JavaView
@@ -57,7 +59,7 @@ class ReachabilityCheckerSpec extends Specification {
     def "given a reachable mapped method when checked then the verdict is REACHABLE with the method-level path"() {
         given:
         def entries = entries(["demo.VulnCaller#main"])
-        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, CallGraphPolicy.RTA).graph(), entries)
 
         when:
         List<ReachabilityChecker.Verdict> verdicts = checker.check(
@@ -76,7 +78,7 @@ class ReachabilityCheckerSpec extends Specification {
     def "given a mapped method never called from the entries when checked then UNREACHABLE with onClasspath (A14)"() {
         given: "Main calls only safe(); the artifact itself is present in the parsed view"
         def entries = entries(["demo.Main#main"])
-        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, CallGraphPolicy.RTA).graph(), entries)
 
         when:
         def verdict = checker.check(
@@ -92,7 +94,7 @@ class ReachabilityCheckerSpec extends Specification {
     def "given a mapped method present in the view but never called when checked then UNREACHABLE at method level"() {
         given: "safe() exists but only MainDanger#main is the entry, and it calls danger()"
         def entries = entries(["demo.MainDanger#main"])
-        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, CallGraphPolicy.RTA).graph(), entries)
 
         when:
         def verdict = checker.check(
@@ -108,7 +110,7 @@ class ReachabilityCheckerSpec extends Specification {
     def "given a mapped class absent from the view when checked then the artifact fallback yields NO_CLASS_INFO"() {
         given: "nope.Gone is in neither the view nor any jar"
         def entries = entries(["demo.Main#main"])
-        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, CallGraphPolicy.RTA).graph(), entries)
 
         when:
         def verdict = checker.check(
@@ -128,7 +130,7 @@ class ReachabilityCheckerSpec extends Specification {
     def "given a candidate without a mapping for an artifact absent from the classpath when checked then NO_CLASS_INFO"() {
         given: "log4j-core is in the SBOM but not on the classpath file"
         def entries = entries(["demo.Main#main"])
-        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, CallGraphPolicy.RTA).graph(), entries)
 
         when:
         def verdict = checker.check([candidate("VULN-LOG", "log4j:log4j-core", "2.14.1")], [:], index)[0]
@@ -144,7 +146,7 @@ class ReachabilityCheckerSpec extends Specification {
         given: "three entries reach the artifact; MainDanger is the lexicographic first closest caller"
         def overrides = ["demo.Main#main", "demo.MainDanger#main", "demo.VulnCaller#main"]
         def entries = entries(overrides)
-        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, CallGraphPolicy.RTA).graph(), entries)
 
         when:
         def verdict = checker.check([candidate("VULN-POS", "stublib:stublib", "1.0")], [:], index)[0]
@@ -176,7 +178,7 @@ class ReachabilityCheckerSpec extends Specification {
         def twoJarView = SootUpSetup.buildView(context, null)
         def twoJarIndex = new ArtifactClassIndex(context.jars())
         def entries = new EntryPointDetector().detect(twoJarView, context.appClassNames(), ["demo.Main#main"], [:])
-        def checker = new ReachabilityChecker(twoJarView, CallGraphFactory.build(twoJarView, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(twoJarView, CallGraphFactory.build(twoJarView, entries, CallGraphPolicy.RTA).graph(), entries)
 
         when:
         def verdict = checker.check([candidate("VULN-JAKARTA", "jakarta:jakarta-servlet", "5.0")], [:], twoJarIndex)[0]
@@ -191,7 +193,7 @@ class ReachabilityCheckerSpec extends Specification {
     def "given a mapped target with a descriptor when checked then the overload is resolved and the verdict REACHABLE"() {
         given:
         def entries = entries(["demo.VulnCaller#main"])
-        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, CallGraphPolicy.RTA).graph(), entries)
 
         when:
         def verdict = checker.check(
@@ -206,7 +208,7 @@ class ReachabilityCheckerSpec extends Specification {
     def "given mapping ids without matching candidates when checked then each unknown id is warned"() {
         given:
         def entries = entries(["demo.Main#main"])
-        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, CallGraphPolicy.RTA).graph(), entries)
 
         when: "only VULN-POS is a candidate; the fixture mapping carries three more ids"
         checker.check([candidate("VULN-POS", "stublib:stublib", "1.0")], mappings, index)
@@ -223,7 +225,7 @@ class ReachabilityCheckerSpec extends Specification {
     def "given a mapping with an empty target list when checked then the artifact level is used"() {
         given:
         def entries = entries(["demo.VulnCaller#main"])
-        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, CallGraphPolicy.RTA).graph(), entries)
 
         when:
         def verdict = checker.check(
@@ -238,7 +240,7 @@ class ReachabilityCheckerSpec extends Specification {
     def "given a mapped descriptor that fits only one overload when checked then the matching overload is used"() {
         given: "BadMains has five main() overloads; the (int) descriptor fits exactly one"
         def entries = entries(["demo.Main#main"])
-        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, CallGraphPolicy.RTA).graph(), entries)
         def targets = [new VulnMappingLoader.VulnTarget("demo.BadMains", "main", "(int)")]
 
         when:
@@ -254,7 +256,7 @@ class ReachabilityCheckerSpec extends Specification {
     def "given a mapped class in the default package when checked then the package-less name is parsed"() {
         given: "Gone carries no package prefix"
         def entries = entries(["demo.Main#main"])
-        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, false).graph(), entries)
+        def checker = new ReachabilityChecker(view, CallGraphFactory.build(view, entries, CallGraphPolicy.RTA).graph(), entries)
 
         when:
         def verdict = checker.check(
@@ -271,9 +273,9 @@ class ReachabilityCheckerSpec extends Specification {
         given:
         def overrides = ["demo.VulnCaller#main", "demo.VulnCaller2#main"]
         def firstEntries = entries(overrides)
-        def first = new ReachabilityChecker(view, CallGraphFactory.build(view, firstEntries, false).graph(), firstEntries)
+        def first = new ReachabilityChecker(view, CallGraphFactory.build(view, firstEntries, CallGraphPolicy.RTA).graph(), firstEntries)
         def secondEntries = entries(overrides)
-        def second = new ReachabilityChecker(view, CallGraphFactory.build(view, secondEntries, false).graph(), secondEntries)
+        def second = new ReachabilityChecker(view, CallGraphFactory.build(view, secondEntries, CallGraphPolicy.RTA).graph(), secondEntries)
         def candidates = [candidate("VULN-POS", "stublib:stublib", "1.0")]
 
         when:

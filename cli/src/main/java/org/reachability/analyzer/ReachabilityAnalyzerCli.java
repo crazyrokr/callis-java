@@ -72,6 +72,12 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
     @Option(names = "--cha", description = "Build the call graph with CHA instead of RTA.")
     boolean cha;
 
+    @Option(names = "--pointer-analysis",
+            description = "Build the call graph with SPARK object-sensitive pointer analysis "
+                    + "instead of RTA (M7b; slower, prunes dispatch to receivers that are "
+                    + "instantiated but never used at the call site).")
+    boolean pointerAnalysis;
+
     @Option(names = "--java-version",
             description = "Expected Java version of the target (informational hint for the guard).")
     Integer javaVersion;
@@ -120,6 +126,10 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
 
     @Override
     public Integer call() {
+        if (cha && pointerAnalysis) {
+            System.err.println("ERROR: --pointer-analysis and --cha are mutually exclusive");
+            return CliResult.USAGE_ERROR.exitCode();
+        }
         if (dryRunSbom) {
             return dryRunSbom();
         }
@@ -177,10 +187,21 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
                 osvDir,
                 Optional.ofNullable(osvChecksum),
                 Optional.ofNullable(mappings),
-                cha ? CallGraphPolicy.CHA : CallGraphPolicy.RTA,
+                policy(),
                 entryPoints == null ? List.of() : entryPoints,
                 CallbackInterfaceSpecs.parse(callbackInterfaces),
                 Optional.ofNullable(javaVersion));
+    }
+
+    /** The graph policy from the two exclusive flags (validated in {@link #call()}); RTA is the default. */
+    private CallGraphPolicy policy() {
+        if (cha) {
+            return CallGraphPolicy.CHA;
+        }
+        if (pointerAnalysis) {
+            return CallGraphPolicy.SPARK;
+        }
+        return CallGraphPolicy.RTA;
     }
 
     private int dryRunSbom() {
@@ -301,14 +322,15 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
             detected.forEach(entryPoint -> System.out.println("  " + entryPoint));
         }
 
+        CallGraphPolicy policy = policy();
         CallGraphFactory.BuildResult result;
         try {
-            result = CallGraphFactory.build(view, detected, cha);
+            result = CallGraphFactory.build(view, detected, policy);
         } catch (AnalysisException e) {
             System.err.println("ERROR: " + e.getMessage());
             return CliResult.ANALYSIS_FAILURE.exitCode();
         }
-        System.out.println("call graph (" + (cha ? "CHA" : "RTA") + "): "
+        System.out.println("call graph (" + policy + "): "
                 + result.nodeCount() + " nodes, " + result.edgeCount() + " calls, "
                 + result.buildMillis() + " ms");
         return CliResult.OK.exitCode();

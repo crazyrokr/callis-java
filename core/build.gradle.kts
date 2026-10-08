@@ -36,6 +36,8 @@ dependencies {
     api(libs.sootup.bytecode.frontend)
     api(libs.sootup.jimple.frontend)
     api(libs.sootup.callgraph)
+    // SPARK (M7b) stays internal to CallGraphFactory, so implementation is enough.
+    implementation(libs.sootup.spark)
 
     testImplementation(platform(libs.groovy.bom))
     testImplementation(libs.spock.core)

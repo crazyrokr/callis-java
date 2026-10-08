@@ -254,6 +254,33 @@ class AnalyzerEngineSpec extends Specification {
         json.get("metadata").get("callGraphBuilder").asText() == "CHA"
     }
 
+    def "given the SPARK policy when analyzed then the same verdicts hold and the report names the SPARK builder"() {
+        given:
+        def sink = new CapturingSink()
+        def request = new AnalysisRequest(
+                Path.of(MINI_APP_CLASSES),
+                miniAppCpFile(),
+                Path.of(BOM_MINI),
+                Path.of(OSV_MINI),
+                Optional.empty(),
+                Optional.of(Path.of(MAPPINGS)),
+                CallGraphPolicy.SPARK,
+                List.of(),
+                Map.of(),
+                Optional.empty())
+
+        when:
+        def result = AnalyzerEngine.analyze(request, work.resolve("reachability-report"),
+                [ReportFormat.JSON], false, sink)
+
+        then: "SPARK is the most precise mode but the same mapped call is still reachable"
+        result.exitCode() == 1
+        sink.out().contains("CRITICAL: VULN-POS")
+        sink.out().contains("REACHABLE")
+        def json = mapper.readTree(work.resolve("reachability-report.json").toFile())
+        json.get("metadata").get("callGraphBuilder").asText() == "SPARK"
+    }
+
     def "given an unwritable report destination when analyzed then exit three with the write error"() {
         given:
         def sink = new CapturingSink()

@@ -7,9 +7,14 @@ A small "application under test" for the M3 call-graph tests:
   (javax/jakarta/odd/none superclass), `@Marked` non-handler annotation,
   `BadMains` signature traps, `demo/chain/` (a 16-deep interface chain plus
   a diamond, used by the callback-walk depth-cap and duplicate-seen
-  branches), and the M4 positive chain `VulnCaller`/`VulnCaller2`/
-  `VulnService` (main -> service -> `stublib.Stub.danger`, with the two
-  callers at equal distance for the lexicographic path tie-break).
+  branches), the M4 positive chain `VulnCaller`/`VulnCaller2`/`VulnService`
+  (main -> service -> `stublib.Stub.danger`, with the two callers at equal
+  distance for the lexicographic path tie-break), and the M7b pointer-analysis
+  fixtures: `PIface` (interface), `SafeImpl`/`DangerImpl` (safe/dangerous
+  implementations), `PointerDemo` (constructs only `SafeImpl`, calls
+  `ref.op()`) and `PointerDemo2` (instantiates `DangerImpl` by assignment but
+  never dispatches to it — the class SootUp's RTA keeps as an instantiation
+  false positive while SPARK prunes).
 - `src/lib/` — stub framework APIs (Spring, Quartz, JMS, servlet, jakarta
   servlet) plus `stublib.Stub` (safe/danger) and `libpkg.Tool` (a library main).
 - `stublib.jar` — the library classes from `src/lib/` (stublib, libpkg, jakarta).

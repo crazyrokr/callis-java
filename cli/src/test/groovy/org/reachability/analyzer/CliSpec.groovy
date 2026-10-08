@@ -248,6 +248,18 @@ class CliSpec extends Specification {
         capturedOut.toString().contains("call graph (CHA): ")
     }
 
+    def "given dry-run-graph with the pointer-analysis flag when executed then the SPARK graph is built"() {
+        when:
+        int exitCode = runCli("--dry-run-graph",
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--pointer-analysis")
+
+        then:
+        exitCode == CliResult.OK.exitCode
+        capturedOut.toString().contains("call graph (SPARK): ")
+    }
+
     def "given dry-run-graph without the classpath file when executed then the app classes alone are analyzed"() {
         when:
         int exitCode = runCli("--dry-run-graph", "--app-classes", MINI_APP_CLASSES)
@@ -516,6 +528,40 @@ class CliSpec extends Specification {
         then: "CHA is less precise but the same mapped call is still reachable"
         exitCode == CliResult.REACHABLE_VULNERABILITIES.exitCode
         capturedOut.toString().contains("CRITICAL: VULN-POS")
+    }
+
+    def "given the pipeline with the pointer-analysis flag when executed then the verdicts hold on the SPARK graph"() {
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", MAPPINGS,
+                "--pointer-analysis")
+
+        then: "SPARK prunes the instantiated-but-undispatched call, yet the mapped call is still reachable"
+        exitCode == CliResult.REACHABLE_VULNERABILITIES.exitCode
+        def out = capturedOut.toString()
+        out.contains("CRITICAL: VULN-POS")
+        out.contains("REACHABLE")
+        out.contains("demo.MainDanger#main -> stublib.Stub#danger")
+    }
+
+    def "given both the cha and the pointer-analysis flags when executed then exit usage error"() {
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", MAPPINGS,
+                "--pointer-analysis",
+                "--cha")
+
+        then:
+        exitCode == CliResult.USAGE_ERROR.exitCode
+        capturedErr.toString().contains("mutually exclusive")
     }
 
     // ------------------------------------------------------------------

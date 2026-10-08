@@ -141,7 +141,7 @@ public final class AnalyzerEngine {
 
         CallGraphFactory.BuildResult result;
         try {
-            result = CallGraphFactory.build(view, detected, request.policy() == CallGraphPolicy.CHA);
+            result = CallGraphFactory.build(view, detected, request.policy());
         } catch (AnalysisException e) {
             sink.err("ERROR: " + e.getMessage());
             return new AnalysisResult(CliResult.ANALYSIS_FAILURE.exitCode(), Optional.empty());
