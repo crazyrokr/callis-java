@@ -99,10 +99,27 @@ class CliSpec extends Specification {
         capturedErr.toString().contains("cannot read SBOM")
     }
 
-    def "given dry-run-sbom with spdx file when executed then exit usage error and explicit message"() {
+    def "given dry-run-sbom with the spdx-mini fixture when executed then the maven package is printed and exit zero"() {
+        given: "SPDX 2.x is a supported input since M7c"
+        File spdx = new File("../core/src/test/resources/fixtures/spdx-mini.json")
+
+        when:
+        int exitCode = runCli("--dry-run-sbom", "--sbom", spdx.absolutePath)
+
+        then:
+        exitCode == CliResult.OK.exitCode
+        def out = capturedOut.toString()
+        out.contains("stublib")
+        out.contains("pkg:maven/stublib/stublib@1.0")
+
+        and: "the package without a purl is a warning, same contract as CycloneDX"
+        capturedErr.toString().contains("WARNING: package no-purl-lib has no purl; skipped")
+    }
+
+    def "given dry-run-sbom with an spdx 3.x file when executed then exit usage error and the not-supported message"() {
         given:
-        File spdx = File.createTempFile("spdx", ".json", new File("build"))
-        spdx.text = '{"spdxVersion": "SPDX-2.3"}'
+        File spdx = File.createTempFile("spdx3", ".json", new File("build"))
+        spdx.text = '{"spdxVersion": "SPDX-3.0.1", "name": "x"}'
         spdx.deleteOnExit()
 
         when:
@@ -110,7 +127,8 @@ class CliSpec extends Specification {
 
         then:
         exitCode == CliResult.USAGE_ERROR.exitCode
-        capturedErr.toString().contains("SPDX")
+        capturedErr.toString().contains("SPDX-3.0.1")
+        capturedErr.toString().contains("2.x")
     }
 
     def "given dry-run-match with the fixture sbom and osv records when executed then the log4shell candidate is printed and exit zero"() {
@@ -578,6 +596,7 @@ class CliSpec extends Specification {
                 "--app-classes", MINI_APP_CLASSES,
                 "--classpath-file", miniAppCpFile().absolutePath,
                 "--mappings", MAPPINGS,
+                "--format", "json,junitxml,sarif",
                 "--output", M5_REPORT)
 
         then: "the JSON report carries the verdict, the purl, the OSV severity and the range evidence"
@@ -594,6 +613,13 @@ class CliSpec extends Specification {
         xml.contains("<testsuite name=\"reachability\" tests=\"1\" failures=\"1\"")
         xml.contains("<failure message=\"reachable\">")
         xml.contains("demo.MainDanger#main -&gt; stublib.Stub#danger")
+
+        and: "the SARIF document (M7c) carries the finding as an error result"
+        def sarif = new File(M5_REPORT + ".sarif").text
+        sarif.contains('"version" : "2.1.0"')
+        sarif.contains('"ruleId" : "VULN-POS"')
+        sarif.contains('"level" : "error"')
+        sarif.contains("demo.MainDanger#main -> stublib.Stub#danger")
     }
 
     def "given the pipeline with only the json format when executed then only the json report is written"() {
@@ -612,6 +638,24 @@ class CliSpec extends Specification {
         exitCode == CliResult.OK.exitCode
         new File("build/tmp/m5-json-only.json").exists()
         !new File("build/tmp/m5-json-only.junit.xml").exists()
+    }
+
+    def "given the pipeline with only the sarif format when executed then only the sarif report is written"() {
+        when:
+        int exitCode = runCli(
+                "--sbom", BOM_MINI,
+                "--osv-dir", OSV_MINI,
+                "--app-classes", MINI_APP_CLASSES,
+                "--classpath-file", miniAppCpFile().absolutePath,
+                "--mappings", MAPPINGS,
+                "--format", "sarif",
+                "--output", "build/tmp/m7c-sarif-only")
+
+        then:
+        exitCode == CliResult.REACHABLE_VULNERABILITIES.exitCode
+        new File("build/tmp/m7c-sarif-only.sarif").exists()
+        !new File("build/tmp/m7c-sarif-only.json").exists()
+        !new File("build/tmp/m7c-sarif-only.junit.xml").exists()
     }
 
     def "given an unknown report format when executed then exit usage error"() {

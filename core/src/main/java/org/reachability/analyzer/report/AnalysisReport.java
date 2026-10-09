@@ -26,8 +26,8 @@ public record AnalysisReport(ReportMetadata metadata, List<VulnerabilityEntry> v
     }
 
     public record VulnerabilityEntry(String id, String purl, String component, String componentVersion,
-                                     String verdict, boolean onClasspath, List<String> severity,
-                                     String affectedRange, List<String> path) {
+                                     String verdict, boolean onClasspath, String summary,
+                                     List<String> severity, String affectedRange, List<String> path) {
         public VulnerabilityEntry {
             severity = List.copyOf(severity);
             path = List.copyOf(path);

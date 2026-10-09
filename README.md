@@ -3,15 +3,17 @@
 Answers one question in CI: **is this vulnerability in the SBOM actually
 reachable from application code?**
 
-Pipeline: `CycloneDX SBOM` + `local OSV database` → candidate vulnerabilities →
-`SootUp` call graph (entry points → app bytecode + resolved library jars) →
-REACHABLE / UNREACHABLE verdicts with call traces → JSON + JUnit XML reports.
+Pipeline: `CycloneDX / SPDX 2.x SBOM` + `local OSV database` → candidate
+vulnerabilities → `SootUp` call graph (entry points → app bytecode + resolved
+library jars) → REACHABLE / UNREACHABLE verdicts with call traces → JSON +
+JUnit XML + SARIF reports.
 Exit code `1` on any reachable vulnerability (fail the pipeline), `0` otherwise
 (`2` = usage error, `3` = analysis failure).
 
 Status: v1 complete (M0–M6 of `implementation-plan.md`); M7 (stretch) in
 progress — M7a done (multi-module split + engine facade), M7b done
-(`--pointer-analysis` SPARK pointer-analysis mode).
+(`--pointer-analysis` SPARK pointer-analysis mode), M7c done (SARIF findings
+output + SPDX 2.x SBOM input).
 
 ## Module layout (M7a)
 
@@ -65,7 +67,7 @@ java -jar cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
   --sbom=examples/vulnerable-demo/target/bom.json \
   --osv-dir=osv-maven \
   --osv-checksum="$(cut -d' ' -f1 osv-maven.sha256)" \
-  --format=json,junitxml \
+  --format=json,junitxml,sarif \
   --output=reachability-report
 ```
 
@@ -91,7 +93,7 @@ snapshot; verified 2026-10-07).
 | `--cha` | Build the call graph with CHA instead of RTA |
 | `--pointer-analysis` | Build the call graph with SPARK object-sensitive pointer analysis instead of RTA (M7b; mutually exclusive with `--cha`, slower, prunes dispatch to receivers that are instantiated but never used at the call site) |
 | `--java-version=<n>` | Expected Java version of the target (informational hint for the guard) |
-| `--format=json,junitxml` | Report formats to write (comma-separated; unknown token ⇒ exit 2) |
+| `--format=json,junitxml,sarif` | Report formats to write (json, junitxml, sarif; comma-separated; unknown token ⇒ exit 2) |
 | `--output=<base>` | Base name for the generated reports (`<base>.json`, `<base>.junit.xml`) |
 | `-v, --verbose` | Verbose diagnostics (entry points, CG size, durations, written files) |
 | `-h, --help` / `-V, --version` | Usage / version |
@@ -125,6 +127,29 @@ validated at startup (malformed ⇒ exit 2); vuln ids with no matching candidate
 are ignored, ids present in the SBOM match but absent from the mapping fall
 back to artifact-level with a report flag, and a mapping entry whose method is
 absent from the call graph is UNREACHABLE (not an error).
+
+## SBOM formats (A15)
+
+`--sbom` accepts two JSON formats, auto-detected from the document:
+
+- **CycloneDX 1.4–1.6** (`bomFormat: CycloneDX`) — the default, emitted by the
+  CycloneDX Maven/Gradle plugins.
+- **SPDX 2.x** (`spdxVersion: SPDX-2.x`, M7c) — packages are read from
+  `externalRefs` purl entries; packages without a maven purl are skipped with
+  a warning, same contract as CycloneDX.
+
+SPDX **3.x** is refused with an explicit error naming the version ("only SPDX
+2.x is supported") — exit 2, never a best-effort parse. An unrecognized
+`bomFormat` or a document with neither marker is likewise an explicit error.
+
+## SARIF findings (A9)
+
+With `--format sarif` the run also writes `<output>.sarif` (SARIF 2.1.0) for
+CI code-scanning UIs: one rule per candidate (the OSV record's summary as
+`fullDescription`), one `error` result per REACHABLE vulnerability (the call
+trace as the message, the component purl as the artifact location, one logical
+location per path hop). UNREACHABLE candidates are findings-format out by
+design — the JUnit XML carries the full verdicts.
 
 ## Precision limitations (A4)
 

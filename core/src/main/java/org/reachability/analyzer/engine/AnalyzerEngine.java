@@ -17,6 +17,7 @@ import org.reachability.analyzer.osv.VulnerabilityCandidates;
 import org.reachability.analyzer.report.AnalysisReport;
 import org.reachability.analyzer.report.JUnitXmlReportWriter;
 import org.reachability.analyzer.report.JsonReportWriter;
+import org.reachability.analyzer.report.SarifReportWriter;
 import org.reachability.analyzer.sbom.ParsedSbom;
 import org.reachability.analyzer.sbom.SbomFormatException;
 import org.reachability.analyzer.sbom.SbomReader;
@@ -209,8 +210,10 @@ public final class AnalyzerEngine {
             try {
                 if (formats.get(i) == ReportFormat.JSON) {
                     new JsonReportWriter().write(report, file);
-                } else {
+                } else if (formats.get(i) == ReportFormat.JUNITXML) {
                     new JUnitXmlReportWriter().write(report, file);
+                } else {
+                    new SarifReportWriter().write(report, file);
                 }
                 written.add(file.toString());
             } catch (IOException e) {
@@ -265,7 +268,7 @@ public final class AnalyzerEngine {
                     candidate.vulnId(), candidate.purl(), candidate.componentName(),
                     candidate.componentVersion(),
                     verdict.status() == ReachabilityChecker.VerdictStatus.REACHABLE ? "REACHABLE" : "UNREACHABLE",
-                    verdict.onClasspath(), candidate.severities(),
+                    verdict.onClasspath(), candidate.summary(), candidate.severities(),
                     String.join("; ", candidate.matchedBy()), verdict.path()));
         }
         return new AnalysisReport(metadata, entries);

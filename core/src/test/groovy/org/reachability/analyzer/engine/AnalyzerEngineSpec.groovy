@@ -281,6 +281,28 @@ class AnalyzerEngineSpec extends Specification {
         json.get("metadata").get("callGraphBuilder").asText() == "SPARK"
     }
 
+    def "given the sarif format when analyzed then the sarif file is written with one error result per reachable"() {
+        given:
+        def sink = new CapturingSink()
+
+        when:
+        def result = AnalyzerEngine.analyze(request(), work.resolve("reachability-report"),
+                [ReportFormat.SARIF], false, sink)
+
+        then: "the findings document lists the reachable vulnerability only (the UNREACHABLE one is absent)"
+        result.exitCode() == 1
+        def sarif = mapper.readTree(work.resolve("reachability-report.sarif").toFile())
+        sarif.get("version").asText() == "2.1.0"
+        def run = sarif.get("runs").get(0)
+        run.get("tool").get("driver").get("name").asText() == "reachability-analyzer"
+        run.get("tool").get("driver").get("rules").size() == 1
+        def results = run.get("results")
+        results.size() == 1
+        results.get(0).get("ruleId").asText() == "VULN-POS"
+        results.get(0).get("level").asText() == "error"
+        results.get(0).get("message").get("text").asText() == "demo.MainDanger#main -> stublib.Stub#danger"
+    }
+
     def "given an unwritable report destination when analyzed then exit three with the write error"() {
         given:
         def sink = new CapturingSink()

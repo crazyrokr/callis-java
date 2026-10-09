@@ -63,6 +63,7 @@ public final class JsonReportWriter {
         node.put("componentVersion", entry.componentVersion());
         node.put("verdict", entry.verdict());
         node.put("onClasspath", entry.onClasspath());
+        node.put("summary", entry.summary());
         ArrayNode severity = MAPPER.createArrayNode();
         for (String value : entry.severity()) {
             severity.add(value);

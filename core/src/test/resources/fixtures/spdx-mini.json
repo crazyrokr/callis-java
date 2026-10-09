@@ -1,0 +1,33 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "name": "mini-app",
+  "SPDXRef-id": "SPDXRef-mini-app",
+  "documentNamespace": "https://example.org/spdx/mini-app-0000-0000-0000-000000000001",
+  "creationInfo": {
+    "created": "2026-10-09T00:00:00Z",
+    "creators": [
+      "Person: Reachability Fixture"
+    ]
+  },
+  "packages": [
+    {
+      "name": "stublib",
+      "SPDXRef-id": "SPDXRef-stublib",
+      "versionInfo": "1.0",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "reference": "pkg:maven/stublib/stublib@1.0"
+        }
+      ]
+    },
+    {
+      "name": "no-purl-lib",
+      "SPDXRef-id": "SPDXRef-nopurl",
+      "versionInfo": "0.5",
+      "downloadLocation": "NOASSERTION"
+    }
+  ]
+}

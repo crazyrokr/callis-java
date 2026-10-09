@@ -1,0 +1,65 @@
+{
+  "$schema" : "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/schemata/sarif-schema-2.1.0.json",
+  "version" : "2.1.0",
+  "runs" : [ {
+    "tool" : {
+      "driver" : {
+        "name" : "reachability-analyzer",
+        "version" : "0.1.0-SNAPSHOT",
+        "rules" : [ {
+          "id" : "VULN-POS",
+          "name" : "VULN-POS",
+          "shortDescription" : {
+            "text" : "stublib 1.0 is affected by VULN-POS"
+          },
+          "fullDescription" : {
+            "text" : "Test vulnerability in the stublib fixture"
+          },
+          "properties" : {
+            "severity" : "CVSS_V3: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+          }
+        }, {
+          "id" : "VULN-NEG",
+          "name" : "VULN-NEG",
+          "shortDescription" : {
+            "text" : "stublib 1.0 is affected by VULN-NEG"
+          },
+          "fullDescription" : {
+            "text" : "Test vulnerability in the stublib fixture"
+          }
+        }, {
+          "id" : "VULN-GONE",
+          "name" : "VULN-GONE",
+          "shortDescription" : {
+            "text" : "nope:Gone 1.0 is affected by VULN-GONE"
+          },
+          "fullDescription" : {
+            "text" : "Summary of the gone fixture vulnerability"
+          },
+          "properties" : {
+            "severity" : "HIGH"
+          }
+        } ]
+      }
+    },
+    "results" : [ {
+      "ruleId" : "VULN-POS",
+      "level" : "error",
+      "message" : {
+        "text" : "demo.MainDanger#main -> stublib.Stub#danger"
+      },
+      "locations" : [ {
+        "physicalLocation" : {
+          "artifactLocation" : {
+            "uri" : "pkg:maven/stublib/stublib@1.0"
+          }
+        },
+        "logicalLocations" : [ {
+          "name" : "demo.MainDanger#main"
+        }, {
+          "name" : "stublib.Stub#danger"
+        } ]
+      } ]
+    } ]
+  } ]
+}

@@ -64,7 +64,7 @@ jobs:
             --sbom=examples/vulnerable-demo/target/bom.json \
             --osv-dir=osv-maven \
             --osv-checksum="$(cut -d' ' -f1 osv-maven.sha256)" \
-            --format=json,junitxml \
+            --format=json,junitxml,sarif \
             --output=reachability-report
           # Optional: class/method-level verdicts for critical CVEs:
           #   --mappings=vuln-mappings.json
@@ -78,6 +78,17 @@ jobs:
           path: |
             reachability-report.json
             reachability-report.junit.xml
+            reachability-report.sarif
+
+      # M7c: the SARIF findings document in the code-scanning UI.
+      # continue-on-error keeps the job's fail-by-design semantics on the
+      # final step even on runners without the action.
+      - name: Upload SARIF to code scanning
+        if: always()
+        continue-on-error: true
+        uses: actions/github/code-scanning/upload-sarif
+        with:
+          sarif_file: reachability-report.sarif
 
       # Fail the job exactly when the analyzer said a vulnerability is
       # reachable (exit 1) — or when the run itself was unusable (exit 2/3).

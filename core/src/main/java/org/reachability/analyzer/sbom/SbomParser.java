@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * One SBOM format (A15). Each new format is one implementation plus one
- * registration in {@link SbomReader} - CycloneDX now, SPDX JSON in M7.
+ * registration in {@link SbomReader} - CycloneDX and SPDX JSON 2.x now.
  */
 public interface SbomParser {
 

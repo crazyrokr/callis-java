@@ -87,7 +87,7 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
     Path output;
 
     @Option(names = "--format", split = ",", defaultValue = "json,junitxml",
-            description = "Report formats to write (json, junitxml).")
+            description = "Report formats to write (json, junitxml, sarif).")
     List<String> formats;
 
     @Option(names = {"-v", "--verbose"}, description = "Verbose diagnostics.")
@@ -159,7 +159,7 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
         for (String token : formats) {
             ReportFormat format = parseFormat(token);
             if (format == null) {
-                System.err.println("ERROR: unknown report format: " + token + " (expected json, junitxml)");
+                System.err.println("ERROR: unknown report format: " + token + " (expected json, junitxml, sarif)");
                 return CliResult.USAGE_ERROR.exitCode();
             }
             reportFormats.add(format);
@@ -168,13 +168,16 @@ public final class ReachabilityAnalyzerCli implements Callable<Integer> {
         return AnalyzerEngine.analyze(request(), output, reportFormats, verbose, sink).exitCode();
     }
 
-    /** {@code json}/{@code junitxml} tokens onto {@link ReportFormat}; anything else is a usage error. */
+    /** {@code json}/{@code junitxml}/{@code sarif} tokens onto {@link ReportFormat}; anything else is a usage error. */
     private static ReportFormat parseFormat(String token) {
         if (token.equals("json")) {
             return ReportFormat.JSON;
         }
         if (token.equals("junitxml")) {
             return ReportFormat.JUNITXML;
+        }
+        if (token.equals("sarif")) {
+            return ReportFormat.SARIF;
         }
         return null;
     }

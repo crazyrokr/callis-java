@@ -105,11 +105,20 @@ usage/config error; `3` = analysis/runtime failure. 2 vs 3 lets CI distinguish a
 broken invocation from an analyzer crash. Wired through a single `CliResult`
 enum — no scattered `System.exit`.
 
-### A9 — Reports: JSON + JUnit XML
+### A9 — Reports: JSON + JUnit XML + SARIF 2.1.0
 
 Per plan Phase 5. One `<testcase>` per vulnerability; REACHABLE ⇒ `<failure>`
 with the call trace, UNREACHABLE ⇒ pass (badges fail exactly when the pipeline
-must fail).
+must fail). **M7c (2026-10-09) added SARIF 2.1.0** as the third format
+(`--format sarif` → `<output>.sarif`): a findings document for CI
+code-scanning UIs — one rule per distinct candidate id (the OSV record's
+summary as `fullDescription`), a `results[]` entry per REACHABLE
+vulnerability only (level `error`, the call trace as the message, the
+component purl as the artifact location, one logical location per path hop).
+UNREACHABLE candidates stay out of the findings document by design — the JUnit
+XML carries the full verdicts. The OSV `summary` also moved into the JSON
+report's per-entry fields (M7c), so the evidence trail is shared across
+formats.
 
 ### A10 — Single Gradle project for v1, multi-module from M7a
 
@@ -172,8 +181,11 @@ artifacts — closes the "quick win" without any method-data dependency.
 ### A15 — SBOM-format agnosticism via `SbomParser`
 
 CycloneDX now (interface + auto-detect from `bomFormat` vs `spdxVersion`);
-SPDX **JSON** in M7; SPDX XML excluded from v1. Enterprises split between the two
-formats; the interface makes each new format one class.
+SPDX **2.x JSON** since M7c (auto-detect from `spdxVersion` starting with
+`SPDX-2`); **SPDX 3.x is an explicit `SbomFormatException`** ("only SPDX 2.x
+is supported"), never a best-effort parse; SPDX XML remains out of scope.
+Enterprises split between the two formats; the interface makes each new format
+one class.
 
 ### A16 — Caching & parallelism deferred, benchmark-gated
 
@@ -588,3 +600,49 @@ parse/path work dominates.
     plan required.
   * Coverage gates unchanged and passing (new code lands under
     `analysis`/`engine`, already gated); SpotBugs/Checkstyle clean.
+- **2026-10-09 (M7c):** SARIF findings output + SPDX 2.x SBOM input (A9 and
+  A15 amended in place).
+  * `report/SarifReportWriter` (SARIF 2.1.0, Jackson ObjectNode): one rule
+    per distinct candidate id (deduped — a single OSV record can hit
+    several components; OSV `summary` as `fullDescription`, first severity
+    string as `properties.severity` when present), a `results[]` entry per
+    REACHABLE vulnerability only (level `error`, the call trace as the
+    message, the component purl as the artifact location, one logical
+    location per path hop). New `ReportFormat.SARIF(".sarif")`; the engine
+    dispatch and the CLI `--format` token `sarif` join json/junitxml.
+  * The OSV record `summary` moved into `AnalysisReport.VulnerabilityEntry`
+    (never null — the OSV record model defaults to "") and therefore into
+    the JSON report as a per-entry field (golden file updated; key order
+    pinned after `onClasspath`), so all three formats carry the same
+    evidence.
+  * `sbom/SpdxJsonParser` (A15): `packages[]` → `SbomComponent` (name,
+    `versionInfo`, the `purl`-typed entry of `externalRefs`, `SPDXRef-id`
+    as bom ref); packages without a usable maven purl are skipped with the
+    CycloneDX warning contract. Registered in `SbomReader.PARSERS`;
+    `canParse` accepts only `spdxVersion` starting with `SPDX-2`, so an
+    SPDX 3.x document is an explicit `SbomFormatException` naming the
+    version ("only SPDX 2.x is supported") instead of the old "planned (M7)"
+    message.
+  * `reachability-check.yml` now requests `--format=json,junitxml,sarif`,
+    uploads the SARIF with the reports, and adds a
+    `github/code-scanning/upload-sarif` step (`continue-on-error`: the
+    living demo job's fail-by-design semantics stay on the final step even
+    on runners without the action).
+  * Tests first: `SpdxJsonParserSpec` (16 — fixture parse, the `canParse`
+    2.x/3.x boundary table, non-maven/unparseable/empty purl skips,
+    multi-ref selection, name/version/empty-packages edges),
+    `SarifReportWriterSpec` (5 — golden byte equality, field-for-field
+    structure, id dedup with both results kept, empty report, non-writable
+    destination), `SbomReaderSpec` 6 → 8, `CliSpec` 43 → 45 (sarif-only
+    format, all-three formats, the rewritten `--dry-run-sbom` SPDX 2.x
+    success / 3.x error pair), `AnalyzerEngineSpec` 10 → 11. Suite total
+    404 (core 328 + cli 45 + coveragetool 31), all green.
+  * E2E demo (log4j 2.14.1, 2026-10-09): `--format=json,junitxml,sarif`
+    exits 1 with 8/8 REACHABLE as before; the 28 KB SARIF carries 8 rules
+    and 8 `error` results whose ruleIds equal the JSON's REACHABLE ids
+    exactly, with the OSV summaries, CVSS severities, component purls and
+    per-hop logical locations. Coverage gates unchanged and passing (sbom
+    192/192, report 152/152 LINE 1.0); SpotBugs/Checkstyle clean.
+  * README: `--format` reference line, quick start and the pipeline line
+    gained SARIF; new "SBOM formats (A15)" section (CycloneDX 1.4–1.6 +
+    SPDX 2.x in, SPDX 3.x explicit error).

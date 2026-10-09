@@ -3,7 +3,8 @@ package org.reachability.analyzer.engine;
 /** A9: the report formats the engine writes, with their file suffixes. */
 public enum ReportFormat {
     JSON(".json"),
-    JUNITXML(".junit.xml");
+    JUNITXML(".junit.xml"),
+    SARIF(".sarif");
 
     private final String suffix;
 

@@ -28,12 +28,15 @@ class JsonReportWriterSpec extends Specification {
                 "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", 2)
         def entries = [
                 new AnalysisReport.VulnerabilityEntry("VULN-POS", "pkg:maven/stublib/stublib@1.0", "stublib", "1.0",
-                        "REACHABLE", true, ["CVSS_V3: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"],
+                        "REACHABLE", true, "Test vulnerability in the stublib fixture",
+                        ["CVSS_V3: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"],
                         "range#0 (introduced=0, fixed=2.0)", ["demo.MainDanger#main", "stublib.Stub#danger"]),
                 new AnalysisReport.VulnerabilityEntry("VULN-NEG", "pkg:maven/stublib/stublib@1.0", "stublib", "1.0",
-                        "UNREACHABLE", true, [], "versions", []),
+                        "UNREACHABLE", true, "Test vulnerability in the stublib fixture",
+                        [], "versions", []),
                 new AnalysisReport.VulnerabilityEntry("VULN-GONE", "pkg:maven/nope/Gone@1.0", "nope:Gone", "1.0",
-                        "UNREACHABLE", false, ["HIGH"], "range#0 (introduced=0, last_affected=1.0)", [])]
+                        "UNREACHABLE", false, "Summary of the gone fixture vulnerability", ["HIGH"],
+                        "range#0 (introduced=0, last_affected=1.0)", [])]
         new AnalysisReport(metadata, entries)
     }
 
@@ -84,13 +87,14 @@ class JsonReportWriterSpec extends Specification {
             def json = vulnerabilities.get(i)
             def entry = report.vulnerabilities().get(i)
             json.fieldNames().toList() == ["id", "purl", "component", "componentVersion", "verdict",
-                    "onClasspath", "severity", "affectedRange", "path"] &&
+                    "onClasspath", "summary", "severity", "affectedRange", "path"] &&
                     json.get("id").asText() == entry.id() &&
                     json.get("purl").asText() == entry.purl() &&
                     json.get("component").asText() == entry.component() &&
                     json.get("componentVersion").asText() == entry.componentVersion() &&
                     json.get("verdict").asText() == entry.verdict() &&
                     json.get("onClasspath").asBoolean() == entry.onClasspath() &&
+                    json.get("summary").asText() == entry.summary() &&
                     nodeTexts(json.get("severity")) == entry.severity() &&
                     json.get("affectedRange").asText() == entry.affectedRange() &&
                     nodeTexts(json.get("path")) == entry.path()
