@@ -51,3 +51,22 @@ jobs:
         with:
           name: reachability-analyzer-native
           path: cli/build/native/
+
+  # M7e: the Maven plugin (A10) — a separate Maven build inside the Gradle
+  # repo (recorded deviation). The script publishes :core locally, installs
+  # the plugin, and runs reachability:check on the demo: the vulnerable
+  # log4j pin must fail with reports, the fixed pin must pass.
+  maven-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: End-to-end (demo 2.14.1 red / 2.25.5 green)
+        run: bash scripts/maven-plugin-e2e.sh

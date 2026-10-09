@@ -13,14 +13,18 @@ Exit code `1` on any reachable vulnerability (fail the pipeline), `0` otherwise
 Status: v1 complete (M0–M6 of `implementation-plan.md`); M7 (stretch) in
 progress — M7a done (multi-module split + engine facade), M7b done
 (`--pointer-analysis` SPARK pointer-analysis mode), M7c done (SARIF findings
-output + SPDX 2.x SBOM input), M7d done (GraalVM native-image binary).
+output + SPDX 2.x SBOM input), M7d done (GraalVM native-image binary),
+M7e done (Gradle + Maven build plugins).
 
 ## Module layout (M7a)
 
 Multi-module Gradle build: `core` holds the whole analysis pipeline (SBOM/OSV
 parsing, SootUp call graph, verdicts, reports) plus the `AnalyzerEngine`
-facade both front ends call; `cli` is the picocli front-end + Shadow fat JAR
-(`cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar`);
+facade every front end calls in-process; `cli` is the picocli front-end +
+Shadow fat JAR (`cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar`);
+`gradle-plugin` is the Gradle front end (M7e, `checkReachability` task);
+`maven-plugin/` is the Maven front end (M7e, `reachability:check` goal) — a
+separate Maven build inside the Gradle repo (recorded deviation, A10);
 `tools:coveragetool` runs the per-package coverage gates against core's
 JaCoCo data.
 
@@ -165,6 +169,47 @@ fat JAR starts in ~2.7 s), and the full analysis produces verdict-identical
 reports to the fat JAR — so CI can run the native binary instead of the
 JVM. `build-analyzer.yml` carries the `native` job (GraalVM 25 runner);
 `check` itself stays under plain Temurin and never builds the binary.
+
+## Build plugins (M7e, A10)
+
+The same engine runs in-process from both build systems.
+
+**Gradle** (`gradle-plugin`, plugin id `org.reachability`):
+
+```kotlin
+plugins {
+    id("java")
+    id("org.reachability")
+}
+
+reachability {
+    bomFile = "target/bom.json"   // CycloneDX or SPDX 2.x SBOM of the project
+    osvDir = "osv-maven"          // local OSV snapshot directory
+    // optional: mappings, expectedOsvChecksum, entryPoints,
+    // callbackInterfaces, cha, pointerAnalysis, formats ("json,junitxml,sarif")
+}
+```
+
+`checkReachability` (group `verification`) analyzes the main source set
+(compiled classes + resolved runtime classpath) and fails the build when
+any SBOM vulnerability is reachable; reports go to
+`build/reachability-report.{json,junit.xml[,sarif]}`.
+
+**Maven** (`maven-plugin`, built with the committed root `mvnw`):
+
+```bash
+# after the project's CycloneDX plugin wrote target/bom.json at package time
+mvn org.reachability:reachability-maven-plugin:0.1.0-SNAPSHOT:check \
+    -Dreachability.sbomFile=target/bom.json -Dreachability.osvDir=../osv-maven
+```
+
+`reachability:check` (default phase `verify`) reads the project's built
+classes and resolved runtime classpath and fails the build the same way;
+reports go to `target/reachability-report.{json,junit.xml[,sarif]}`.
+Relative `-D` paths resolve against the project's basedir.
+`scripts/maven-plugin-e2e.sh` proves the goal end-to-end on the demo
+(vulnerable pin fails with reports, fixed pin passes) and runs as the
+`maven-plugin` job in `build-analyzer.yml`.
 
 ## Precision limitations (A4)
 

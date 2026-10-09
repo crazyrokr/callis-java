@@ -11,10 +11,23 @@ plugins {
     groovy
     checkstyle
     jacoco
+    `maven-publish`
 }
 
 group = "org.reachability"
 version = "0.1.0-SNAPSHOT"
+
+// M7e (A10): publish core to the local Maven repository so the standalone
+// maven-plugin build (maven-plugin/pom.xml) can depend on org.reachability:core.
+val coreJavaComponent = components.getByName("java")
+
+publishing {
+    publications {
+        create<MavenPublication>("core") {
+            from(coreJavaComponent)
+        }
+    }
+}
 
 java {
     toolchain {

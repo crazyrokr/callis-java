@@ -9,4 +9,5 @@ pluginManagement {
 
 include("core")
 include("cli")
+include("gradle-plugin")
 include("tools:coveragetool")

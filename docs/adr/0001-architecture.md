@@ -147,7 +147,25 @@ for plugin work. **M7a (2026-10-07) realized the split:** root aggregator +
 is the in-process seam the M7e plugins call — the whole M4/M5 pipeline plus
 report generation behind `analyze(AnalysisRequest, output, formats, verbose,
 DiagnosticSink)`, console I/O abstracted so the CLI and plugins surface the
-same diagnostics with the same exit codes.
+same diagnostics with the same exit codes. **M7e (2026-10-09) realized both
+plugin front ends:** `gradle-plugin` (in the Gradle multi-project,
+`java-gradle-plugin` + TestKit) applies the `reachability { ... }` extension
+and the `checkReachability` task (group `verification`, wired to the main
+source set's output and the resolved runtime classpath) and calls the same
+`AnalyzerEngine.analyze` in-process — engine exit 1 becomes a
+`GradleException` (task failure), exit 2/3 a usage/analysis failure.
+`maven-plugin/` is a **separate Maven build inside the Gradle repo**
+(recorded deviation — `maven-plugin` packaging requires a Maven build; the
+root `mvnw` 3.9.16 wrapper is committed): the `reachability:check` Mojo
+(default phase `verify`, `requiresDependencyResolution = RUNTIME`) reads the
+project's built classes and `getRuntimeClasspathElements()`, failing with
+`MojoExecutionException` on exit 1/2/3. `:core` gained `maven-publish`
+(local repository) so the Maven build depends on
+`org.reachability:core:0.1.0-SNAPSHOT`. Two recorded plan simplifications:
+the "auto-detect the CycloneDX plugin's output" idea was dropped — `bomFile`
+is an explicit input (the user points it at their `bom.json`), keeping the
+plugins build-tool-agnostic — and the maven-plugin's unit tests use plain
+JUnit 5 instead of the JUnit-4-only maven-plugin-testing-harness.
 
 ### A11 — Spock (Groovy 4) as the test framework
 
@@ -694,3 +712,72 @@ parse/path work dominates.
     plugin.
   * README: new "Native image (M7d)" section (build command, binary path,
     measured startup, CI job note).
+- **2026-10-09 (M7e):** Gradle + Maven plugin front ends (A10 amended in
+  place).
+  * `gradle-plugin/` module (java-library + groovy + java-gradle-plugin,
+    `api(project(":core"))`, plugin id `org.reachability`):
+    `ReachabilityPlugin` requires the java plugin (clear
+    `IllegalStateException` — Gradle 9.8 removed
+    `PluginManager.hasPlugin(Class)`, so the check uses the plugin id
+    "java", which `java-library` applies transitively); a
+    `ReachabilityExtension` (defaults: formats `json,junitxml`, RTA policy,
+    no overrides); a `CheckReachabilityTask` (depends on `compileJava`;
+    inputs = the main classes directory + the `runtimeClasspath`
+    configuration written to `build/reachability-cp.txt`; reports to
+    `build/reachability-report.*`; the engine's `DiagnosticSink` maps to
+    the task logger; exit 1 ⇒ `GradleException`, 2/3 ⇒ usage/analysis
+    failure).
+  * Tests first (7): `ReachabilityPluginSpec` (ProjectBuilder: extension
+    + task exist with the documented defaults; no-java-plugin ⇒ clear
+    error — Gradle wraps plugin application in
+    `PluginApplicationException`, so the assertion pins the cause;
+    extension values reach the realized task's inputs) +
+    `CheckReachabilityTaskFunctionalSpec` (Gradle TestKit, hermetic
+    fixture projects against core's generated stublib.jar: vulnerable pin
+    ⇒ task fails and `build/reachability-report.{json,junit.xml}` exist;
+    `cha` ⇒ same verdict; empty OSV dir ⇒ success with "No vulnerability
+    candidates"; missing `bomFile` ⇒ usage error).
+  * `maven-plugin/` (separate Maven build; root `mvnw` 3.9.16 committed):
+    `reachability:check` Mojo (default phase `verify`,
+    `requiresDependencyResolution = RUNTIME`): app classes from the
+    project's output directory, classpath from
+    `MavenProject.getRuntimeClasspathElements()` (3.9.16 includes the
+    project's own classes directory — the engine logs it as a harmless
+    "unreadable jar" warning), `sbomFile`/`osvDir` parameters with clear
+    `MojoExecutionException`s when absent, reports to
+    `target/reachability-report.*`, exit 1/2/3 ⇒ `MojoExecutionException`.
+    `:core` publishes `org.reachability:core:0.1.0-SNAPSHOT` to the local
+    repository (`maven-publish`) and the plugin pom depends on it.
+  * Maven 3.9.16 API drift hit while testing (recorded here, not in a
+    separate ADR): the `org.apache.maven.plugins.annotations` package is a
+    separate artifact (`org.apache.maven.plugin-tools:maven-plugin-
+    annotations`, 3.16.0 in this timeline); `DefaultArtifact`'s
+    constructor no longer takes a `File` (7-arg constructor +
+    `setFile`, and the handler must opt in with
+    `setAddedToClasspath(true)` — the 1-arg `DefaultArtifactHandler`
+    constructor leaves it `false`, silently excluding the artifact from
+    `getRuntimeClasspathElements()`); `MavenProject.addArtifact` is gone
+    (`getArtifacts().add`). Unit tests are plain JUnit 5 (5.14.4, surefire
+    3.6.0) instead of the JUnit-4-only maven-plugin-testing-harness
+    (recorded deviation).
+  * Gradle 9.8 API drift hit in the plugin (also recorded here):
+    `ProjectLayout` moved to `org.gradle.api.file`;
+    `getBuildDirectory()` is a `DirectoryProperty`;
+    `SourceSetOutput.getClassesDirs()` returns a `FileCollection`;
+    `hasPlugin(Class)` removed; and Kotlin DSL: the `maven-publish`
+    plugin id needs backticks, `create<MavenPublication> { }` is the
+    generic form, and `components` is accessed via `getByName("java")`.
+  * Suite total 413 (core 328 + cli 47 + coveragetool 31 + gradle-plugin 7),
+    all green under `check --rerun-tasks`; the maven-plugin's 4 JUnit 5
+    tests run under `./mvnw -f maven-plugin/pom.xml install`. Coverage
+    gates unchanged (the plugin code is new modules outside the gated
+    core packages); Checkstyle clean on the new Java.
+  * `scripts/maven-plugin-e2e.sh`: publish core → install the plugin →
+    demo `mvn package -Dlog4j.version=…` + direct goal invocation (the
+    demo pom stays clean; relative `-D` paths resolve against the project
+    basedir, so the script passes absolute paths): 2.14.1 fails with
+    `reachability-report.{json,junit.xml}` on disk, 2.25.5 passes. Runs
+    as the `maven-plugin` job in `build-analyzer.yml`.
+  * README: status line M7e; module layout mentions both plugin modules;
+    new "Build plugins (M7e, A10)" section (Gradle snippet, Maven goal
+    snippet, E2E + CI job note).
