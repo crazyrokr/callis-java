@@ -13,7 +13,7 @@ Exit code `1` on any reachable vulnerability (fail the pipeline), `0` otherwise
 Status: v1 complete (M0–M6 of `implementation-plan.md`); M7 (stretch) in
 progress — M7a done (multi-module split + engine facade), M7b done
 (`--pointer-analysis` SPARK pointer-analysis mode), M7c done (SARIF findings
-output + SPDX 2.x SBOM input).
+output + SPDX 2.x SBOM input), M7d done (GraalVM native-image binary).
 
 ## Module layout (M7a)
 
@@ -150,6 +150,21 @@ CI code-scanning UIs: one rule per candidate (the OSV record's summary as
 trace as the message, the component purl as the artifact location, one logical
 location per path hop). UNREACHABLE candidates are findings-format out by
 design — the JUnit XML carries the full verdicts.
+
+## Native image (M7d, A2)
+
+A native binary of the same CLI builds from `:cli`:
+
+```bash
+JAVA_HOME=<GraalVM 25> ./gradlew :cli:nativeCompile
+# binary: cli/build/native/nativeCompile/cli  (~21 MB, statically linked)
+```
+
+`--version` starts in single-digit milliseconds (measured 3–13 ms; the
+fat JAR starts in ~2.7 s), and the full analysis produces verdict-identical
+reports to the fat JAR — so CI can run the native binary instead of the
+JVM. `build-analyzer.yml` carries the `native` job (GraalVM 25 runner);
+`check` itself stays under plain Temurin and never builds the binary.
 
 ## Precision limitations (A4)
 

@@ -5,6 +5,9 @@ plugins {
     groovy
     application
     alias(libs.plugins.shadow)
+    // Gradle 9.8 generates the catalog accessor hierarchically:
+    // key "graalvm-native" -> libs.plugins.graalvm.native
+    alias(libs.plugins.graalvm.native)
     checkstyle
     jacoco
 }
@@ -29,6 +32,9 @@ dependencies {
     testImplementation(platform(libs.groovy.bom))
     testImplementation(libs.spock.core)
     testImplementation(libs.groovy)
+    // Jackson is core's implementation dependency; the NativeImageConfigSpec
+    // parses the reflect-config resource, so it is declared for tests here.
+    testImplementation(libs.jackson.databind)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     // CliSpec exercises core's shared test utilities (TestPermissions).
     testImplementation(testFixtures(project(":core")))
@@ -89,6 +95,16 @@ jacoco {
 
 application {
     mainClass = "org.reachability.analyzer.ReachabilityAnalyzerCli"
+}
+
+// M7d (A2): the native-image target. The main class comes from the
+// application block above. Build it under a GraalVM JDK —
+// JAVA_HOME=<graalvm 25> ./gradlew :cli:nativeImage — while `check` stays
+// under plain Temurin and never builds the binary. Any missing-metadata
+// config found by running the binary (M7d) goes into
+// src/main/resources/META-INF/native-image/reachability-analyzer/.
+graalvmNative {
+    // Build the binary from the project's main class and runtime classpath.
 }
 
 tasks.shadowJar {

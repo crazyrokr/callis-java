@@ -25,3 +25,29 @@ jobs:
 
       - name: Sanity - Fat-JAR starts
         run: java -jar cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar --help
+
+  # M7d: the native-image binary (A2). GraalVM JDK 25 provides the
+  # native-image compiler; `check` above stays under plain Temurin.
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/jdks/setup-jdk@v1
+        with:
+          version: "25-graal"
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Build the native binary
+        run: ./gradlew :cli:nativeCompile
+
+      - name: Sanity - native binary starts
+        run: cli/build/native/nativeCompile/cli --version
+
+      - name: Upload native binary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reachability-analyzer-native
+          path: cli/build/native/
