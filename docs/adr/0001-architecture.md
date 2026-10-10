@@ -972,10 +972,13 @@ parse/path work dominates.
     own `core` module is never published either; a packageRule disables
     both name forms (bare artifact and full coordinate), so every run
     saves 6 wasted metadata lookups that can only 404/429.
-    (2) hostRules caps repo.maven.apache.org at
-    `concurrentRequestLimit: 2` — the v44 name for the per-host burst
-    limit — so the remaining legitimate lookups (sootup, picocli, jackson,
-    the Maven toolchain) stay under Maven Central's rate limit.
+    (2) hostRules throttle for repo.maven.apache.org: the first cap
+    (`concurrentRequestLimit: 2`) did not stop 429s on the legitimate
+    lookups (sootup, groovy), so it is now fully serialized —
+    `concurrentRequestLimit: 1` plus `maxRequestsPerSecond: 2` (a 500ms
+    gap; a run's ~15 metadata lookups take ~8s instead of bursting).
+    Both are v44 hostRule options consumed by the HTTP layer
+    (util/http/rate-limits.js; the pre-v44 name is not in the schema).
     Also revalidated against Renovate 44.149: `config:base` no longer
     exists (the CLI migrates it to `config:recommended`, which pulls in
     opinionated extras — dependency dashboard, forced action
@@ -986,3 +989,30 @@ parse/path work dominates.
     Verified with `npx renovate --platform local --dry-run`: no
     config-validation errors, no forced migration, zero
     org/reachability lookups, all 60 real deps still extracted.
+    (Pacing itself is not observable from a local dry run — nearly every
+    lookup is an HTTP-cache hit — so the 429 verdict comes from the next
+    live run; if it persists, the egress IP is throttled at the edge and
+    the remaining levers are a `schedule` or running from own infra.)
+  * Same day, two CI reds from the workflows (both reproduced locally):
+    (1) The `reachability-check` SARIF upload was rejected —
+    "logicalLocations contains duplicate item" (results 1-7 of the
+    log4j 2.14.1 run). Root cause: the demo's trace visits two distinct
+    methods that render to the same display name (log4j 2.14.1's static
+    `LoggerConfig#log(LoggerConfig, LogEvent)` helper and the instance
+    `LoggerConfig#log(LogEvent)` — a bridge-style overload pair), and
+    SarifReportWriter emitted one logical location per hop by name, so
+    the duplicated item failed the upload action's validation. Fix:
+    `resultsNode` dedups logical locations (order-preserving,
+    LinkedHashSet) while the result message keeps the full trace; new
+    SarifReportWriterSpec test (repeated-hop trace: message keeps the
+    duplicate, the location list drops it). Core suite 328 → 329;
+    end-to-end: the regenerated demo SARIF has 8 results, 0 duplicate
+    logicalLocations.
+    (2) The `build-analyzer` maven-plugin job: `./mvnw install` failed in
+    a fresh checkout — ReachabilityCheckMojoTest compiles its fixture app
+    against ../core/.../mini-app/stublib.jar, which is generated
+    (gitignored) and absent until a core generator runs; the e2e script's
+    first step now also runs `:core:stublibJar`. Verified by deleting
+    every generated fixture (jar, mini-app classes, bytecode probes,
+    core/build) and running the script: regenerated, plugin tests
+    4/4, demo 2.14.1 red with reports / 2.25.5 green.

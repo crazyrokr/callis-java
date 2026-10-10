@@ -10,7 +10,10 @@ fail=0
 step() { echo; echo "== $*"; }
 
 step "publish core to the local Maven repository"
-./gradlew -q :core:publishToMavenLocal || { echo "FAILED: :core:publishToMavenLocal"; fail=1; }
+# :core:stublibJar rebuilds core/src/test/resources/fixtures/mini-app/stublib.jar:
+# it is generated (gitignored), so a fresh checkout (CI) lacks it until this runs,
+# and ReachabilityCheckMojoTest compiles its fixture app against that exact file.
+./gradlew -q :core:publishToMavenLocal :core:stublibJar || { echo "FAILED: :core:publishToMavenLocal"; fail=1; }
 
 step "install reachability-maven-plugin"
 ./mvnw -q -f maven-plugin/pom.xml install || { echo "FAILED: plugin install"; fail=1; }

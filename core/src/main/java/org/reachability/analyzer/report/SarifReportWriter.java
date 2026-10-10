@@ -8,8 +8,10 @@ import org.reachability.analyzer.report.AnalysisReport.VulnerabilityEntry;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * M7c (A9): writes the report as SARIF 2.1.0 — the findings document for
@@ -17,8 +19,12 @@ import java.util.Map;
  * record's summary as {@code fullDescription}); a {@code results[]} entry
  * per REACHABLE vulnerability only — level {@code error}, the call trace
  * as the message, the component purl as the artifact location, one
- * logical location per path hop. UNREACHABLE candidates stay out of a
- * findings document; the JUnit XML carries the full verdicts.
+ * logical location per distinct path hop (the trace can repeat a display
+ * name — overloaded and bridge methods render identically — and a
+ * duplicate item makes the GitHub upload action reject the whole
+ * report, so the location list dedups while the message keeps the full
+ * trace). UNREACHABLE candidates stay out of a findings document; the
+ * JUnit XML carries the full verdicts.
  */
 public final class SarifReportWriter {
 
@@ -86,9 +92,15 @@ public final class SarifReportWriter {
             ObjectNode physical = MAPPER.createObjectNode();
             physical.set("artifactLocation", MAPPER.createObjectNode().put("uri", entry.purl()));
             location.set("physicalLocation", physical);
+            // One logical location per DISTINCT hop: a trace can repeat a display
+            // name (overloaded/bridge methods render identically), and a duplicate
+            // item in logicalLocations rejects the report at the GitHub upload.
             ArrayNode logical = MAPPER.createArrayNode();
+            Set<String> seenHops = new LinkedHashSet<>();
             for (String hop : entry.path()) {
-                logical.add(MAPPER.createObjectNode().put("name", hop));
+                if (seenHops.add(hop)) {
+                    logical.add(MAPPER.createObjectNode().put("name", hop));
+                }
             }
             location.set("logicalLocations", logical);
             ArrayNode locations = MAPPER.createArrayNode();

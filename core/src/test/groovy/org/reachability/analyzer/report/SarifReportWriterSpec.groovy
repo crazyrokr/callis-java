@@ -13,8 +13,8 @@ import java.nio.file.Path
  * M7c: the SARIF 2.1.0 findings writer (A9) — golden-file byte equality,
  * structural pins (one rule per distinct candidate id, a result per
  * REACHABLE only, the trace as message text, the purl as artifact
- * location, one logical location per hop), the dedup and empty-report
- * edges, and the non-writable destination.
+ * location, one logical location per hop — without duplicate items), the
+ * dedup and empty-report edges, and the non-writable destination.
  */
 class SarifReportWriterSpec extends Specification {
 
@@ -129,6 +129,33 @@ class SarifReportWriterSpec extends Specification {
 
         and: "both components stay findings"
         node.get("runs").get(0).get("results").size() == 2
+    }
+
+    def "given a path that repeats a hop display name when written then the logical locations carry no duplicate"() {
+        given: "a bridge-style trace: two distinct methods share one display name" +
+                " (log4j's static LoggerConfig#log(LoggerConfig, LogEvent) helper and the" +
+                " instance LoggerConfig#log(LogEvent) both render as 'LoggerConfig#log')"
+        def metadata = new AnalysisReport.ReportMetadata("0.1.0-SNAPSHOT", "RTA", 1, 5, 9, 12, null, null, 0)
+        def path = ["com.example.demo.App#main", "LoggerConfig#log", "LoggerConfig#log", "LoggerConfig#processLogEvent"]
+        def entries = [
+                new AnalysisReport.VulnerabilityEntry("VULN-DUP-HOP",
+                        "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+                        "org.apache.logging.log4j:log4j-core", "2.14.1", "REACHABLE", true,
+                        "Repeated-hop fixture vulnerability", [], "versions", path)]
+        def file = workDir.resolve("dup-hop.sarif")
+
+        when:
+        new SarifReportWriter().write(new AnalysisReport(metadata, entries), file)
+        def result = MAPPER.readTree(file.toFile()).get("runs").get(0).get("results").get(0)
+
+        then: "the full trace (repeated hop included) stays in the message text"
+        result.get("message").get("text").asText() == path.join(" -> ")
+
+        and: "the logical locations keep the order but drop the repeated item" +
+                " (a duplicate item in one location makes the GitHub upload action reject the whole report)"
+        def logical = result.get("locations").get(0).get("logicalLocations")
+        def names = (0..<logical.size()).collect { logical.get(it).get("name").asText() }
+        names == ["com.example.demo.App#main", "LoggerConfig#log", "LoggerConfig#processLogEvent"]
     }
 
     def "given a report with no candidates when written then a valid document with no rules or results"() {

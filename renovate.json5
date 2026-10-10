@@ -32,7 +32,8 @@
 // module — neither exists in any remote repository.
 //
 // Maven Central answers bursts of maven-metadata.xml queries with HTTP 429,
-// so its lookups are capped at 2 concurrent (hostRules below).
+// so its lookups are fully serialized and capped at 2 requests/second
+// (hostRules below).
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
 
@@ -69,11 +70,14 @@
     }
   ],
 
-  // Keep Maven Central lookups under its burst rate limit (HTTP 429s).
+  // Keep Maven Central lookups under its rate limit (HTTP 429s): at most
+  // one request in flight, no more than 2/second (a 500ms gap). A run's
+  // ~15 metadata lookups then take ~8s instead of bursting.
   "hostRules": [
     {
       "matchHost": "repo.maven.apache.org",
-      "concurrentRequestLimit": 2
+      "concurrentRequestLimit": 1,
+      "maxRequestsPerSecond": 2
     }
   ],
 }
