@@ -16,6 +16,10 @@ on:
   push:
   pull_request:
 
+permissions:
+  security-events: write
+  contents: read
+
 jobs:
   reachability:
     runs-on: ubuntu-latest
