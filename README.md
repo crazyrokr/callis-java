@@ -14,7 +14,8 @@ Status: v1 complete (M0–M6 of `implementation-plan.md`); M7 (stretch) in
 progress — M7a done (multi-module split + engine facade), M7b done
 (`--pointer-analysis` SPARK pointer-analysis mode), M7c done (SARIF findings
 output + SPDX 2.x SBOM input), M7d done (GraalVM native-image binary),
-M7e done (Gradle + Maven build plugins).
+M7e done (Gradle + Maven build plugins); M8 done (cacheable,
+content-sensitive `checkReachability` task).
 
 ## Module layout (M7a)
 
@@ -170,7 +171,7 @@ reports to the fat JAR — so CI can run the native binary instead of the
 JVM. `build-analyzer.yml` carries the `native` job (GraalVM 25 runner);
 `check` itself stays under plain Temurin and never builds the binary.
 
-## Build plugins (M7e, A10)
+## Build plugins (M7e/M8, A10)
 
 The same engine runs in-process from both build systems.
 
@@ -193,7 +194,15 @@ reachability {
 `checkReachability` (group `verification`) analyzes the main source set
 (compiled classes + resolved runtime classpath) and fails the build when
 any SBOM vulnerability is reachable; reports go to
-`build/reachability-report.{json,junit.xml[,sarif]}`.
+`build/reachability-report.{json,junit.xml[,sarif]}`. The task is
+`@CacheableTask` with content-sensitive inputs (app classes, classpath
+jars, SBOM/OSV/mappings *content*) and declared outputs (the reports plus
+`build/reachability-cp.txt`), so unchanged content is `UP_TO_DATE` and
+identical content in a new directory is `FROM_CACHE` with `--build-cache`
+— edit the SBOM or the OSV snapshot in place and the check re-runs. The
+analysis runs in the Gradle daemon (Gradle 9.8 exposes no public
+worker-executor accessor), so a huge call graph needs the daemon's heap
+raised via `org.gradle.jvmargs` in `gradle.properties`.
 
 **Maven** (`maven-plugin`, built with the committed root `mvnw`):
 

@@ -4,11 +4,19 @@ import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.DirectoryProperty;
+import org.gradle.api.file.RegularFile;
+import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
+import org.gradle.api.tasks.CacheableTask;
+import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
-import org.gradle.api.tasks.InputFiles;
-import org.gradle.api.tasks.Internal;
+import org.gradle.api.tasks.InputDirectory;
+import org.gradle.api.tasks.InputFile;
+import org.gradle.api.tasks.Optional;
+import org.gradle.api.tasks.OutputFiles;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
 import org.reachability.analyzer.engine.AnalysisRequest;
 import org.reachability.analyzer.engine.AnalyzerEngine;
@@ -23,24 +31,29 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 /**
- * A10 (M7e): runs the reachability analysis on the project's main source
- * set — compiled classes + resolved runtime classpath — and fails the
- * build when any SBOM vulnerability is reachable (engine exit 1), or when
- * the run itself was unusable (exit 2/3). Reports go to
- * {@code build/reachability-report.*}; a run that ends before report
- * generation deletes the previous run's files (the engine contract).
+ * A10 (M7e), M8: runs the reachability analysis on the project's main
+ * source set - compiled classes + resolved runtime classpath - in-process
+ * and fails the build when any SBOM vulnerability is reachable (engine
+ * exit 1), or when the run itself was unusable (exit 2/3). M8: the task is
+ * cacheable - content-sensitive inputs (app classes, classpath jars,
+ * SBOM/OSV/mappings content) and declared outputs (the reports and the
+ * classpath file) drive both the up-to-date check and the build cache, so
+ * the analysis does not re-run when nothing changed. The analysis runs in
+ * the daemon (Gradle 9.8 exposes no public worker-executor accessor), so a
+ * huge graph needs the daemon's heap raised via org.gradle.jvmargs.
  */
+@CacheableTask
 public abstract class CheckReachabilityTask extends DefaultTask {
 
     /** The main source set's classes directory (exactly one, see the plugin). */
-    @Internal
+    @InputDirectory
+    @PathSensitive(PathSensitivity.NONE)
     public abstract DirectoryProperty getAppClasses();
 
     /** The resolved runtime classpath; written to a file for the engine. */
-    @InputFiles
+    @Classpath
     public abstract ConfigurableFileCollection getClasspathJars();
 
     @Input
@@ -54,6 +67,24 @@ public abstract class CheckReachabilityTask extends DefaultTask {
 
     @Input
     public abstract Property<String> getMappings();
+
+    /** The SBOM file content; the path string alone would miss content edits. */
+    @InputFile
+    @Optional
+    @PathSensitive(PathSensitivity.NONE)
+    public abstract RegularFileProperty getBomFileContent();
+
+    /** The OSV directory content; a record added in place re-runs the check. */
+    @InputDirectory
+    @Optional
+    @PathSensitive(PathSensitivity.NONE)
+    public abstract DirectoryProperty getOsvDirContent();
+
+    /** The mappings file content. */
+    @InputFile
+    @Optional
+    @PathSensitive(PathSensitivity.NONE)
+    public abstract RegularFileProperty getMappingsContent();
 
     @Input
     public abstract ListProperty<String> getEntryPoints();
@@ -74,6 +105,19 @@ public abstract class CheckReachabilityTask extends DefaultTask {
     @Input
     public abstract Property<String> getReportBase();
 
+    /** The written reports and classpath file; declared so the task is cacheable. */
+    @OutputFiles
+    public List<RegularFile> getWrittenFiles() {
+        List<RegularFile> outputs = new ArrayList<>();
+        if (!getClasspathJars().isEmpty()) {
+            outputs.add(getProject().getLayout().getBuildDirectory().file("reachability-cp.txt").get());
+        }
+        for (ReportFormat format : parseFormats()) {
+            outputs.add(reportFile(format));
+        }
+        return outputs;
+    }
+
     @TaskAction
     public void check() {
         if (getBomFile().get().isBlank()) {
@@ -86,6 +130,7 @@ public abstract class CheckReachabilityTask extends DefaultTask {
         if (getCha().get() && getPointerAnalysis().get()) {
             throw new GradleException("checkReachability: cha and pointerAnalysis are mutually exclusive");
         }
+        List<ReportFormat> formats = parseFormats();
 
         Path cpFile = writeClasspathFile();
         Path reportBase = reportBase();
@@ -101,11 +146,10 @@ public abstract class CheckReachabilityTask extends DefaultTask {
                 getProject().getLogger().error(line);
             }
         };
-        int exitCode = AnalyzerEngine.analyze(request(cpFile), reportBase,
-                parseFormats(), false, sink).exitCode();
+        int exitCode = AnalyzerEngine.analyze(request(cpFile), reportBase, formats, false, sink).exitCode();
 
         if (exitCode == 1) {
-            throw new GradleException("reachable vulnerabilities found — see " + reportFiles(reportBase));
+            throw new GradleException("reachable vulnerabilities found - see " + reportFiles(reportBase, formats));
         }
         if (exitCode != 0) {
             throw new GradleException("reachability analysis failed (exit " + exitCode
@@ -119,20 +163,35 @@ public abstract class CheckReachabilityTask extends DefaultTask {
         return new AnalysisRequest(
                 getAppClasses().get().getAsFile().toPath(),
                 cpFile,
-                Path.of(getBomFile().get()),
-                Path.of(getOsvDir().get()),
+                Path.of(resolve(getBomFile().get())),
+                Path.of(resolve(getOsvDir().get())),
                 present(getExpectedOsvChecksum()),
-                present(getMappings()).map(Path::of),
+                present(getMappings()).map(this::resolve).map(Path::of),
                 policy,
                 getEntryPoints().get(),
                 CallbackInterfaceSpecs.parse(getCallbackInterfaces().get()),
-                Optional.empty());
+                java.util.Optional.empty());
     }
 
-    /** Unset optionals read as empty — the plugin gives every property a convention. */
-    private static Optional<String> present(Property<String> property) {
+    /** Unset optionals read as empty - the plugin gives every property a convention. */
+    private static java.util.Optional<String> present(Property<String> property) {
         String value = property.getOrElse("").trim();
-        return value.isEmpty() ? Optional.empty() : Optional.of(value);
+        return value.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(value);
+    }
+
+    /**
+     * Relative paths resolve against the project directory; absolute paths
+     * pass through; the result is lexically normalized. (JDK 25's two-arg
+     * File constructor also joins absolute children, so Path.resolve is used.)
+     */
+    private String resolve(String path) {
+        Path p = Path.of(path);
+        Path resolved = p.isAbsolute() ? p : getProject().getProjectDir().toPath().resolve(p);
+        return resolved.normalize().toString();
+    }
+
+    private Path classpathFile() {
+        return getProject().getLayout().getBuildDirectory().file("reachability-cp.txt").get().getAsFile().toPath();
     }
 
     private Path reportBase() {
@@ -141,6 +200,13 @@ public abstract class CheckReachabilityTask extends DefaultTask {
             base = getProject().getLayout().getBuildDirectory().get().getAsFile().toPath().resolve(base);
         }
         return base;
+    }
+
+    /** The engine's report location for the format: {@code <base><suffix>}. */
+    private RegularFile reportFile(ReportFormat format) {
+        Path base = reportBase();
+        Path file = base.getParent().resolve(base.getFileName() + format.suffix());
+        return getProject().getLayout().file(getProject().provider(() -> file.toFile())).get();
     }
 
     /** The runtime classpath as the engine's newline-separated jar list; null when empty. */
@@ -152,8 +218,7 @@ public abstract class CheckReachabilityTask extends DefaultTask {
         if (jars.isEmpty()) {
             return null;
         }
-        Path file = getProject().getLayout().getBuildDirectory().file("reachability-cp.txt")
-                .get().getAsFile().toPath();
+        Path file = classpathFile();
         try {
             Files.write(file, jars);
             return file;
@@ -178,9 +243,9 @@ public abstract class CheckReachabilityTask extends DefaultTask {
         return formats;
     }
 
-    private String reportFiles(Path reportBase) {
+    private String reportFiles(Path reportBase, List<ReportFormat> formats) {
         List<String> files = new ArrayList<>();
-        for (ReportFormat format : parseFormats()) {
+        for (ReportFormat format : formats) {
             files.add(reportBase + format.suffix());
         }
         return String.join(", ", files);

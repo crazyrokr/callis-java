@@ -3,12 +3,15 @@ package org.reachability.gradle;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.file.Directory;
+import org.gradle.api.file.RegularFile;
 import org.gradle.api.plugins.JavaPlugin;
+import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.Set;
 
 /**
@@ -63,7 +66,39 @@ public class ReachabilityPlugin implements Plugin<Project> {
             task.getPointerAnalysis().set(extension.getPointerAnalysis());
             task.getFormats().set(extension.getFormats());
             task.getReportBase().convention(DEFAULT_REPORT_BASE);
+            task.getBomFileContent().set(contentFile(project, task.getBomFile()));
+            task.getOsvDirContent().set(contentDir(project, task.getOsvDir()));
+            task.getMappingsContent().set(contentFile(project, task.getMappings()));
         });
+    }
+
+    /**
+     * A path property as task input content: blank is absent, relative paths
+     * resolve against the project directory, so a file or directory edited
+     * in place invalidates the task.
+     */
+    private Provider<RegularFile> contentFile(Project project, Property<String> path) {
+        return path.filter(value -> !value.isBlank())
+                .map(value -> resolve(project, value))
+                .flatMap(file -> project.getLayout().file(project.provider(() -> file)));
+    }
+
+    private Provider<Directory> contentDir(Project project, Property<String> path) {
+        return path.filter(value -> !value.isBlank())
+                .map(value -> resolve(project, value))
+                .flatMap(dir -> project.getLayout().dir(project.provider(() -> dir)));
+    }
+
+    /**
+     * Relative paths resolve against the project directory; absolute paths
+     * pass through; the result is lexically normalized. (JDK 25's two-arg
+     * File constructor also joins absolute children, so Path.resolve is used.)
+     */
+    private File resolve(Project project, String path) {
+        Path p = Path.of(path);
+        Path resolved = p.isAbsolute()
+                ? p : project.getProjectDir().toPath().resolve(p);
+        return resolved.normalize().toFile();
     }
 
     /**

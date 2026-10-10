@@ -166,6 +166,18 @@ the "auto-detect the CycloneDX plugin's output" idea was dropped — `bomFile`
 is an explicit input (the user points it at their `bom.json`), keeping the
 plugins build-tool-agnostic — and the maven-plugin's unit tests use plain
 JUnit 5 instead of the JUnit-4-only maven-plugin-testing-harness.
+**M8 (2026-10-10) hardened the Gradle front end:** `checkReachability` is
+`@CacheableTask` with content-sensitive inputs — the main classes directory,
+the `@Classpath` runtime classpath, and the SBOM/OSV/mappings *content*
+(path strings alone would miss in-place edits) — plus declared outputs
+(reports + `reachability-cp.txt`), so unchanged content is up-to-date and
+the build cache restores the run for identical content in a new project
+directory. The analysis stays in the daemon: Gradle 9.8 in this timeline
+removed `Project.getWorkers()` and exposes no public `WorkerExecutor`
+accessor (the worker types are exported but unreachable without internal
+APIs; even the built-in java plugin does not reference them), so the
+proposed out-of-process worker execution was not implementable — a huge
+graph needs the daemon's heap raised via `org.gradle.jvmargs` instead.
 
 ### A11 — Spock (Groovy 4) as the test framework
 
@@ -781,3 +793,70 @@ parse/path work dominates.
   * README: status line M7e; module layout mentions both plugin modules;
     new "Build plugins (M7e, A10)" section (Gradle snippet, Maven goal
     snippet, E2E + CI job note).
+- **2026-10-10 (M8):** Gradle plugin hardening — cacheable task with
+  content-sensitive inputs (A10 amended in place), from a review of four
+  user proposals. Verdicts: the `@CacheableTask`/`@PathSensitive` proposal
+  is applicable and exposed gaps beyond it (below); the out-of-process
+  Worker API proposal is **not implementable in 9.8** (see the A10
+  note — no public `WorkerExecutor` accessor), so the analysis stays
+  in-daemon with the `org.gradle.jvmargs` guidance; SARIF output was
+  already done in M7c; the "infer an SBOM from the classpath" proposal is
+  **deferred** (a classpath-inferred SBOM silently drops shaded,
+  relocated, or non-Maven jars → false "no reachable vulnerabilities"
+  from a security gate; it would also change the pinned exit-2 contract
+  for a missing `--sbom` and add cyclonedx-core-java under core's
+  100% line-coverage gate — if ever pursued: strict opt-in, loud per-jar
+  warnings, `sbomSource` in report metadata).
+  * `CheckReachabilityTask` (same file, amended): the pre-M8 gaps —
+    `appClasses` was `@Internal` (not an input at all; `dependsOn`
+    compileJava is ordering, not up-to-date data),
+    `bomFile`/`osvDir`/`mappings` were `@Input` path *strings* (content
+    edits invisible), and no declared outputs (not cacheable) — now:
+    `@InputDirectory @PathSensitive(NONE)` app classes, `@Classpath`
+    jars, `@Optional @PathSensitive(NONE)` content inputs
+    (`RegularFileProperty`/`DirectoryProperty` — plain
+    `Property<RegularFile>`/`Property<Directory>` members are not
+    creatable in 9.8 — wired from the extension's path properties, blank
+    = absent, resolved against the project directory), and
+    `@OutputFiles` = the classpath file (non-empty classpath only) + the
+    per-format reports. A zero-candidate run still deletes the previous
+    reports (engine contract) and the task stays up-to-date afterwards —
+    Gradle records per-file output state, absence included.
+  * Relative `bomFile`/`osvDir`/`mappings` now resolve against the
+    project directory and are lexically normalized (previously the
+    engine saw them relative to the daemon's CWD — wrong under daemon
+    reuse). Both the task and the plugin use `Path.of(...)` +
+    `resolve` for it: **JDK 25.0.3's two-arg `File(parent, child)`
+    constructor joins absolute children instead of replacing the parent**
+    (`Path.resolve` kept the standard semantics — probed with a plain
+    javac/java test), so the `File` form is a latent bug in this
+    timeline.
+  * Tests first (5 new; 12 in the module): four TestKit pins — app class
+    edited ⇒ re-run + `REACHABLE` flip; an OSV record dropped into the
+    directory in place ⇒ re-run + candidate analyzed; a local SBOM copy
+    edited (affected version gone) ⇒ re-run + "No vulnerability
+    candidates"; and `--build-cache`: identical content in a *new*
+    project directory ⇒ `FROM_CACHE` with `reachability-cp.txt` and the
+    report restored — plus a reflection pin of the new annotations
+    (single-value `PathSensitive.value()` in 9.8). All four up-to-date
+    pins fail against the pre-M8 task (the stale `UP_TO_DATE` runs),
+    which is the regression proof.
+  * Gradle 9.8 API drift hit while implementing (recorded here):
+    `Project.getWorkers()` is gone with no public replacement — the
+    `org.gradle.workers.*` types, incl. `WorkAction`/`WorkParameters`
+    (exported only by `gradle-public-api-legacy-9.8.0.jar`, and they do
+    resolve from `gradleApi()`), exist but no API class exposes a
+    `WorkerExecutor`, and the built-in java plugin references no worker
+    API either; `Task.getOutputs()` is a reserved name (the accessor is
+    `getWrittenFiles()`); `Project.provider` takes a `Callable`;
+    `WorkAction` is `execute()` + `getParameters()` only.
+  * Suite total 418 (core 328 + cli 47 + coveragetool 31 + gradle-plugin
+    12), all green under `check --rerun-tasks`; maven-plugin 4/4 under
+    `./mvnw install` and the E2E script re-run green (demo 2.14.1 fails
+    with reports on disk / 2.25.5 passes — the Maven front end is
+    unchanged); coverage gates unchanged (plugin code is outside the
+    gated core packages); Checkstyle clean on the amended Java.
+  * README: the "Build plugins" section notes the cacheable,
+    content-sensitive task (`UP_TO_DATE` on unchanged content,
+    `FROM_CACHE` across directories) and the `org.gradle.jvmargs`
+    guidance for huge graphs.

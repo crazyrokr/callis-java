@@ -57,6 +57,31 @@ class ReachabilityPluginSpec extends Specification {
         e.cause.message.contains("java plugin")
     }
 
+    def "given the task class when it is inspected then the cacheable and content-sensitive input pins hold"() {
+        given:
+        def taskClass = CheckReachabilityTask
+        def appMethod = taskClass.getMethod("getAppClasses")
+        def classpathMethod = taskClass.getMethod("getClasspathJars")
+        def bomMethod = taskClass.getMethod("getBomFileContent")
+        def osvMethod = taskClass.getMethod("getOsvDirContent")
+        def mappingsMethod = taskClass.getMethod("getMappingsContent")
+
+        expect: "the task is cacheable; content, not paths, drives the up-to-date check"
+        taskClass.isAnnotationPresent(org.gradle.api.tasks.CacheableTask)
+        classpathMethod.isAnnotationPresent(org.gradle.api.tasks.Classpath)
+        appMethod.isAnnotationPresent(org.gradle.api.tasks.InputDirectory)
+        appMethod.getAnnotation(org.gradle.api.tasks.PathSensitive).value() ==
+                org.gradle.api.tasks.PathSensitivity.NONE
+        bomMethod.isAnnotationPresent(org.gradle.api.tasks.InputFile)
+        bomMethod.isAnnotationPresent(org.gradle.api.tasks.Optional)
+        bomMethod.getAnnotation(org.gradle.api.tasks.PathSensitive).value() ==
+                org.gradle.api.tasks.PathSensitivity.NONE
+        osvMethod.isAnnotationPresent(org.gradle.api.tasks.InputDirectory)
+        osvMethod.isAnnotationPresent(org.gradle.api.tasks.Optional)
+        mappingsMethod.isAnnotationPresent(org.gradle.api.tasks.InputFile)
+        mappingsMethod.isAnnotationPresent(org.gradle.api.tasks.Optional)
+    }
+
     def "given extension values when the task is realized then they reach the task inputs"() {
         given:
         Project project = ProjectBuilder.builder().build()
