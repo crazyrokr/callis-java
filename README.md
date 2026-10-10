@@ -305,9 +305,9 @@ in `src/test/resources/fixtures/bytecode/`).
 execution data against the plan's gates (sbom/osv/report 100% line, analysis
 ≥ 90% branch) via `org.reachability.coveragetool.CoverageGate`. It replaces
 Gradle's `jacocoTestCoverageVerification` task, whose ant worker in Gradle 9.x
-evaluates the execution data as empty and would pass vacuously (see the ADR).
+evaluates the execution data as empty and would pass vacuously (see ADR 0018).
 
 ## License / origin
 
-Greenfield project; see `docs/adr/0001-architecture.md` (single ADR) and
-`implementation-plan.md`.
+Greenfield project; see `docs/adr/` (0001 overview + index, one ADR per
+decision 0002–0017, ops ADRs 0018–0019) and `implementation-plan.md`.
