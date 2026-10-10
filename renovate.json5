@@ -1,0 +1,42 @@
+// Renovate (https://docs.renovatebot.com) — automatic dependency-update PRs
+// for this repository.
+//
+// Scope (the managers enabled by default):
+//   * gradle        — gradle/libs.versions.toml (the single source of truth:
+//                     Renovate edits the [versions] pins in place, so one
+//                     PR per pin), every module's build script,
+//                     settings.gradle.kts
+//   * gradleWrapper — gradle/wrapper/gradle-wrapper.properties
+//   * maven         — maven-plugin/pom.xml, .mvn/wrapper/maven-wrapper.properties
+//   * github-actions — .github/workflows/*.yml
+//
+// Excluded on purpose:
+//   * examples/vulnerable-demo — the log4j 2.14.1 pin is a deliberately
+//     VULNERABLE release (T65, the fail-by-design workflow): an "update"
+//     would silently flip the red integration test green, so the whole
+//     directory is out of scope.
+//   * osv-maven — the OSV snapshot scripts/download-osv.sh downloads;
+//     pinned via osv-maven.sha256 (A14), not a dependency.
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  // config:base — PR-based updates, no automerge, no platform automigration:
+  // every update lands as a reviewable PR gated by ./gradlew check in CI.
+  "extends": ["config:base"],
+
+  "ignorePaths": [
+    "examples/vulnerable-demo",
+    "osv-maven"
+  ],
+
+  "packageRules": [
+    // maven-plugin/pom.xml is pure build tooling (Maven APIs + compiler +
+    // test deps): one combined PR instead of one per package.
+    {
+      "matchFiles": ["maven-plugin/**"],
+      "groupName": "maven plugin toolchain"
+    }
+  ],
+
+  // Stale PRs get rebased instead of sitting out of date (default: false).
+  "rebaseStalePrs": true,
+}

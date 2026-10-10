@@ -284,6 +284,13 @@ Relative `-D` paths resolve against the project's basedir.
   committed `./gradlew` wrapper.
 - **`.github/workflows/build-analyzer.yml`** — CI for the tool itself
   (`./gradlew check` on push/PR).
+- **`renovate.json5`** — dependency updates via [Renovate](https://docs.renovatebot.com):
+  PRs for the version catalog, the Gradle/Maven wrappers, the
+  `maven-plugin` toolchain, and the GitHub Actions.
+  `examples/vulnerable-demo` is excluded (its vulnerable log4j pin is
+  deliberate — T65) and `osv-maven` is a data artifact, not a dependency
+  (A14). Activating the bot is a manual step: install the Renovate app
+  (or bot) on the repository.
 
 ## Bytecode-version guard
 

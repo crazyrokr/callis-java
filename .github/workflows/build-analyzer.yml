@@ -33,9 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: graalvm/jdks/setup-jdk@v1
+      - uses: graalvm/setup-graalvm@v1
         with:
-          version: "25-graal"
+          version: "25.4"
+          java-version: "25"
+          cache: "gradle"
 
       - uses: gradle/actions/setup-gradle@v5
 

@@ -940,3 +940,26 @@ parse/path work dominates.
     forked worker process and the `maxHeapSize` convention (the
     `org.gradle.jvmargs` guidance is superseded — the worker's own heap
     bounds the graph, not the daemon's).
+- **2026-10-10:** Renovate configuration (automatic dependency-update PRs).
+  * `renovate.json5` at the repo root (JSON5 so the exclusions carry their
+    rationale; linked to the official schema; verified offline via
+    `npx renovate --platform local --dry-run`, which parses the config,
+    resolves `config:base`, and extracts 63 deps from the tracked files).
+    `config:base` — PRs only, no automerge, no platform automigration:
+    every update is a reviewable PR gated by `./gradlew check` in CI.
+  * Default managers cover the intended scope: `gradle` (the version
+    catalog — the single source of truth — is edited in place, so one PR
+    per pin; every module build script; `settings.gradle.kts`),
+    `gradleWrapper`, `maven` (`maven-plugin/pom.xml`), `mavenWrapper`,
+    `github-actions` (both workflows).
+  * `packageRules`: one "maven plugin toolchain" group PR for
+    `maven-plugin/**` (pure build tooling, several pinned APIs);
+    `rebaseStalePrs: true` (default is false).
+  * `ignorePaths` — the two deliberate exclusions: `examples/vulnerable-demo`
+    (the log4j 2.14.1 pin is deliberately vulnerable, T65's fail-by-design
+    test; an "update" would silently flip the red test green) and
+    `osv-maven` (the snapshot `scripts/download-osv.sh` downloads; A14
+    pins it via `osv-maven.sha256` — a data artifact, not a dependency).
+  * Enabling the bot on the repo is the remaining manual GitHub step:
+    install the Renovate app (or bot) on the repository; it opens an
+    onboarding PR that confirms the config, then starts creating PRs.
