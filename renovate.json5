@@ -43,6 +43,12 @@
   ],
 
   "packageRules": [
+    {
+      "matchDatasources": ["maven"],
+      "registryUrls": [
+        "https://maven-central.storage-download.googleapis.com/maven2/"
+      ]
+    },
     // maven-plugin/pom.xml is pure build tooling (Maven APIs + compiler +
     // test deps): one combined PR instead of one per package.
     {
