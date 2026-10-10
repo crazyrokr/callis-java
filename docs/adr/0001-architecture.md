@@ -172,12 +172,30 @@ the `@Classpath` runtime classpath, and the SBOM/OSV/mappings *content*
 (path strings alone would miss in-place edits) — plus declared outputs
 (reports + `reachability-cp.txt`), so unchanged content is up-to-date and
 the build cache restores the run for identical content in a new project
-directory. The analysis stays in the daemon: Gradle 9.8 in this timeline
-removed `Project.getWorkers()` and exposes no public `WorkerExecutor`
-accessor (the worker types are exported but unreachable without internal
-APIs; even the built-in java plugin does not reference them), so the
-proposed out-of-process worker execution was not implementable — a huge
-graph needs the daemon's heap raised via `org.gradle.jvmargs` instead.
+directory. M8 recorded that Gradle 9.8 removed `Project.getWorkers()` and
+exposes no public `WorkerExecutor` accessor (the worker types are exported
+but unreachable without internal APIs; even the built-in java plugin does
+not reference them), so the proposed out-of-process worker execution
+appeared not implementable and the analysis stayed in the daemon.
+**M9 (2026-10-10) corrected that:** no accessor is needed — the task
+decorator *injects* the service: `@Inject public abstract WorkerExecutor
+getWorkerExecutor()` on the task works (probed: the implementation
+resolves from the daemon's worker jars, `processIsolation(...)` forks a
+real JVM, the worker's log output is piped back into the build log, and
+`await()` throws `WorkerExecutionException` with the worker's original
+exception nested — the task unwraps it to keep its exact failure
+messages). The analysis now runs in a **forked worker process**
+(`maxHeapSize`, default `1g`) instead of the daemon, so a huge call graph
+cannot starve the daemon. The 9.8 `WorkAction` parameter contract is
+strict (all probed): the daemon instantiates the action's parameter type
+via its object factory, so an interface must be property-shaped (a bare
+setter without a getter fails the decorator); and configured parameters
+reach the action **only** when it implements the internal
+`org.gradle.workers.internal.ProvidesWorkResult` marker with an `@Inject
+(WorkParameters, InstanceGenerator)` constructor — a plain action *runs
+but silently receives nothing* (a deliberately failing plain action
+passed the probe), so `ReachabilityWorkAction` implements the marker and
+the reflection pin in `ReachabilityPluginSpec` holds it.
 
 ### A11 — Spock (Groovy 4) as the test framework
 
@@ -860,3 +878,65 @@ parse/path work dominates.
     content-sensitive task (`UP_TO_DATE` on unchanged content,
     `FROM_CACHE` across directories) and the `org.gradle.jvmargs`
     guidance for huge graphs.
+- **2026-10-10 (M9):** out-of-process worker execution for the Gradle
+  task (A10 amended in place — the M8 "not implementable" record was
+  wrong: `Project.getWorkers()` is gone, but the task decorator
+  *injects* the `WorkerExecutor` via `@Inject`, which no public accessor
+  is needed for).
+  * Probes (throwaway task + TestKit spec, deleted afterwards) settled
+    the 9.8 contract: `@Inject public abstract WorkerExecutor
+    getWorkerExecutor()` is injected (implementation from
+    `lib/plugins/gradle-workers-9.8.0.jar`);
+    `processIsolation(spec -> spec.getForkOptions().setMaxHeapSize(...))`
+    forks a real JVM (daemon and worker pids differ; the worker's stdout
+    is piped back into the build log at default console level);
+    `submit(actionClass, params -> ...)` — the daemon instantiates the
+    action's parameter type via its object factory (an interface must be
+    property-shaped: a bare setter without a getter fails with
+    "Cannot have abstract method"), and configured parameters reach the
+    action **only** when it implements the internal
+    `org.gradle.workers.internal.ProvidesWorkResult` marker (on the
+    `gradleApi()` classpath in this build, so the plugin can implement
+    it without exotic dependencies) with an `@Inject (WorkParameters,
+    InstanceGenerator)` constructor — a plain action runs but silently
+    receives *nothing* (probed: a deliberately failing plain action
+    passed the build); `await()` throws `WorkerExecutionException`
+    (a RuntimeException, multi-cause) with the worker's original
+    exception nested in the cause chain.
+  * `ReachabilityWorkAction` (new): all request data as strings/lists
+    (nothing live crosses the process boundary); implements
+    `ProvidesWorkResult` + the `@Inject` 2-arg constructor; rebuilds the
+    `AnalysisRequest`, runs `AnalyzerEngine.analyze` in the worker with a
+    `Logging`-based sink (out → lifecycle, err → error), announces its
+    own pid ("reachability: analysis runs in process N"), and rethrows
+    the task's exact messages (exit 1 → "reachable vulnerabilities found
+    - see …", 2/3 → "reachability analysis failed (exit N)").
+  * `CheckReachabilityTask`: gains `@Inject getWorkerExecutor()` and
+    `@Internal getMaxHeapSize()` (a resource setting, not a verdict
+    input); `check()` keeps the three in-daemon pre-checks, then submits
+    the action to `processIsolation` with the configured max heap and
+    unwraps `WorkerExecutionException` to the task's own
+    `GradleException` (first non-wrapping GradleException in the cause /
+    suppressed chain). The pre-M8/M7e functional tests pass
+    byte-identical — their output assertions are the
+    behavioral-equivalence proof (worker log lines surface at default
+    console level) — and the `FROM_CACHE` pin still holds, so the task
+    stays cacheable.
+  * `ReachabilityExtension` gains `maxHeapSize` (convention `1g`); the
+    plugin wires it to the task.
+  * Tests first (4 new; 16 in the module): TestKit — the analysis runs
+    in a forked worker process (the worker's pid announcement is the
+    pin; red against the in-daemon code) and a vulnerable run's failure
+    names the report files (pins the unwrap); `ReachabilityPluginSpec` —
+    `maxHeapSize` default + propagation, and a reflection pin that the
+    action carries `ProvidesWorkResult` + the `@Inject` constructor.
+  * Suite total 422 (core 328 + cli 47 + coveragetool 31 + gradle-plugin
+    16), all green under `check --rerun-tasks` (one 121-char line fixed
+    by Checkstyle); maven-plugin 4/4 under `./mvnw install` and the E2E
+    script re-run green (demo 2.14.1 fails with reports on disk /
+    2.25.5 passes — the Maven front end is unchanged); coverage gates
+    unchanged; Checkstyle clean.
+  * README: status line M9; the "Build plugins" section now notes the
+    forked worker process and the `maxHeapSize` convention (the
+    `org.gradle.jvmargs` guidance is superseded — the worker's own heap
+    bounds the graph, not the daemon's).

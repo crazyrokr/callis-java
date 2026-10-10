@@ -15,7 +15,8 @@ progress — M7a done (multi-module split + engine facade), M7b done
 (`--pointer-analysis` SPARK pointer-analysis mode), M7c done (SARIF findings
 output + SPDX 2.x SBOM input), M7d done (GraalVM native-image binary),
 M7e done (Gradle + Maven build plugins); M8 done (cacheable,
-content-sensitive `checkReachability` task).
+content-sensitive `checkReachability` task); M9 done (the analysis runs
+in a forked worker process).
 
 ## Module layout (M7a)
 
@@ -187,7 +188,8 @@ reachability {
     bomFile = "target/bom.json"   // CycloneDX or SPDX 2.x SBOM of the project
     osvDir = "osv-maven"          // local OSV snapshot directory
     // optional: mappings, expectedOsvChecksum, entryPoints,
-    // callbackInterfaces, cha, pointerAnalysis, formats ("json,junitxml,sarif")
+    // callbackInterfaces, cha, pointerAnalysis, formats ("json,junitxml,sarif"),
+    // maxHeapSize (convention "1g" - heap of the forked analysis worker)
 }
 ```
 
@@ -200,9 +202,11 @@ jars, SBOM/OSV/mappings *content*) and declared outputs (the reports plus
 `build/reachability-cp.txt`), so unchanged content is `UP_TO_DATE` and
 identical content in a new directory is `FROM_CACHE` with `--build-cache`
 — edit the SBOM or the OSV snapshot in place and the check re-runs. The
-analysis runs in the Gradle daemon (Gradle 9.8 exposes no public
-worker-executor accessor), so a huge call graph needs the daemon's heap
-raised via `org.gradle.jvmargs` in `gradle.properties`.
+analysis runs in a **forked worker process** (process isolation;
+`maxHeapSize`, convention `1g`), so a huge call graph cannot starve the
+daemon — the worker announces its own pid in the output
+("reachability: analysis runs in process N"), so out-of-memory failures
+are attributable to the worker.
 
 **Maven** (`maven-plugin`, built with the committed root `mvnw`):
 

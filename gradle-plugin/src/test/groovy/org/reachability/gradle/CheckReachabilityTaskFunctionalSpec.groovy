@@ -288,4 +288,35 @@ class CheckReachabilityTaskFunctionalSpec extends Specification {
         Files.exists(copy.resolve("build/reachability-cp.txt"))
         Files.exists(copy.resolve("build/reachability-report.json"))
     }
+
+    // --- M9: out-of-process execution --------------------------------------
+    // The analysis runs in a forked worker process; the worker announces its
+    // own pid (the daemon's lines would never print it), so the line's
+    // presence is the isolation pin.
+
+    def "given a project when checkReachability runs then the analysis executes in a forked worker process"() {
+        given:
+        writeSafeFixture(new File(BOM_MINI).absolutePath, "osv-mini", true)
+
+        when:
+        def result = runner("checkReachability").build()
+        println result.output
+
+        then:
+        result.task(":checkReachability").outcome == TaskOutcome.SUCCESS
+        result.output.contains("reachability: analysis runs in process ")
+    }
+
+    def "given a vulnerable project when checkReachability fails then the failure names the report files"() {
+        given:
+        writeFixtureProject(new File(OSV_MINI).absolutePath, false)
+
+        when:
+        def result = runner("checkReachability", "--stacktrace").buildAndFail()
+        println result.output
+
+        then: "the worker's exception is unwrapped to the task's own message"
+        result.output.contains("reachable vulnerabilities found - see")
+        result.output.contains("reachability-report.json")
+    }
 }

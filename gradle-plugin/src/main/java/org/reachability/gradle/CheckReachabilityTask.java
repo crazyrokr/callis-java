@@ -1,5 +1,7 @@
 package org.reachability.gradle;
 
+import javax.inject.Inject;
+
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.ConfigurableFileCollection;
@@ -13,39 +15,52 @@ import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputDirectory;
 import org.gradle.api.tasks.InputFile;
+import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputFiles;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
-import org.reachability.analyzer.engine.AnalysisRequest;
-import org.reachability.analyzer.engine.AnalyzerEngine;
-import org.reachability.analyzer.engine.CallGraphPolicy;
-import org.reachability.analyzer.engine.CallbackInterfaceSpecs;
-import org.reachability.analyzer.engine.DiagnosticSink;
+import org.gradle.workers.WorkQueue;
+import org.gradle.workers.WorkerExecutor;
+import org.gradle.workers.WorkerExecutionException;
 import org.reachability.analyzer.engine.ReportFormat;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 
 /**
- * A10 (M7e), M8: runs the reachability analysis on the project's main
- * source set - compiled classes + resolved runtime classpath - in-process
- * and fails the build when any SBOM vulnerability is reachable (engine
- * exit 1), or when the run itself was unusable (exit 2/3). M8: the task is
- * cacheable - content-sensitive inputs (app classes, classpath jars,
- * SBOM/OSV/mappings content) and declared outputs (the reports and the
- * classpath file) drive both the up-to-date check and the build cache, so
- * the analysis does not re-run when nothing changed. The analysis runs in
- * the daemon (Gradle 9.8 exposes no public worker-executor accessor), so a
- * huge graph needs the daemon's heap raised via org.gradle.jvmargs.
+ * A10 (M7e), M8, M9: runs the reachability analysis on the project's main
+ * source set - compiled classes + resolved runtime classpath - and fails
+ * the build when any SBOM vulnerability is reachable (engine exit 1), or
+ * when the run itself was unusable (exit 2/3). M8: the task is cacheable -
+ * content-sensitive inputs (app classes, classpath jars, SBOM/OSV/mappings
+ * content) and declared outputs (the reports and the classpath file) drive
+ * both the up-to-date check and the build cache, so the analysis does not
+ * re-run when nothing changed. M9: the analysis runs in a forked worker
+ * process (process isolation, maxHeapSize heap) instead of the daemon;
+ * Gradle 9.8 has no Project accessor for the worker executor, so the task
+ * receives it via @Inject, and it delivers configured parameters to a work
+ * action only when the action implements the internal ProvidesWorkResult
+ * marker with an @Inject (WorkParameters, InstanceGenerator) constructor
+ * (recorded in A10).
  */
 @CacheableTask
 public abstract class CheckReachabilityTask extends DefaultTask {
+
+    /** Injected by the task decorator: 9.8 has no Project accessor for the worker executor. */
+    @Inject
+    public abstract WorkerExecutor getWorkerExecutor();
+
+    /** Max heap of the forked analysis worker; a resource setting, not a verdict input. */
+    @Internal
+    public abstract Property<String> getMaxHeapSize();
 
     /** The main source set's classes directory (exactly one, see the plugin). */
     @InputDirectory
@@ -135,42 +150,60 @@ public abstract class CheckReachabilityTask extends DefaultTask {
         Path cpFile = writeClasspathFile();
         Path reportBase = reportBase();
 
-        DiagnosticSink sink = new DiagnosticSink() {
-            @Override
-            public void out(String line) {
-                getProject().getLogger().lifecycle(line);
-            }
+        runInForkedWorker(cpFile, reportBase);
+    }
 
-            @Override
-            public void err(String line) {
-                getProject().getLogger().error(line);
-            }
-        };
-        int exitCode = AnalyzerEngine.analyze(request(cpFile), reportBase, formats, false, sink).exitCode();
-
-        if (exitCode == 1) {
-            throw new GradleException("reachable vulnerabilities found - see " + reportFiles(reportBase, formats));
-        }
-        if (exitCode != 0) {
-            throw new GradleException("reachability analysis failed (exit " + exitCode
-                    + "); see the console output above");
+    /**
+     * The engine runs in a forked worker process so a huge graph cannot
+     * starve the daemon; the worker's failures are unwrapped to the
+     * task's own messages (the reports list, the exit code).
+     */
+    private void runInForkedWorker(Path cpFile, Path reportBase) {
+        WorkQueue queue = getWorkerExecutor().processIsolation(spec ->
+                spec.getForkOptions().setMaxHeapSize(getMaxHeapSize().get()));
+        queue.submit(ReachabilityWorkAction.class, params -> configure(params, cpFile, reportBase));
+        try {
+            queue.await();
+        } catch (WorkerExecutionException e) {
+            throw unwrap(e);
         }
     }
 
-    private AnalysisRequest request(Path cpFile) {
-        CallGraphPolicy policy = getPointerAnalysis().get() ? CallGraphPolicy.SPARK
-                : getCha().get() ? CallGraphPolicy.CHA : CallGraphPolicy.RTA;
-        return new AnalysisRequest(
-                getAppClasses().get().getAsFile().toPath(),
-                cpFile,
-                Path.of(resolve(getBomFile().get())),
-                Path.of(resolve(getOsvDir().get())),
-                present(getExpectedOsvChecksum()),
-                present(getMappings()).map(this::resolve).map(Path::of),
-                policy,
-                getEntryPoints().get(),
-                CallbackInterfaceSpecs.parse(getCallbackInterfaces().get()),
-                java.util.Optional.empty());
+    private void configure(ReachabilityWorkAction.Params params, Path cpFile, Path reportBase) {
+        params.setAppClasses(getAppClasses().get().getAsFile().getAbsolutePath());
+        params.setClasspathFile(cpFile == null ? "" : cpFile.toString());
+        params.setBomFile(resolve(getBomFile().get()));
+        params.setOsvDir(resolve(getOsvDir().get()));
+        params.setExpectedOsvChecksum(present(getExpectedOsvChecksum()).orElse(""));
+        params.setMappings(present(getMappings()).map(this::resolve).orElse(""));
+        params.setPolicyName(getPointerAnalysis().get() ? "SPARK" : getCha().get() ? "CHA" : "RTA");
+        params.setFormats(getFormats().get());
+        params.setReportBase(reportBase.toString());
+        params.setEntryPoints(new ArrayList<>(getEntryPoints().get()));
+        params.setCallbackInterfaces(new ArrayList<>(getCallbackInterfaces().get()));
+    }
+
+    /**
+     * The worker wraps failures in a multi-cause exception; the task's own
+     * GradleException (with the report file names) must reach the build
+     * output, so the first non-wrapping GradleException in the chain wins.
+     */
+    private static GradleException unwrap(WorkerExecutionException e) {
+        Deque<Throwable> pending = new ArrayDeque<>();
+        pending.push(e);
+        while (!pending.isEmpty()) {
+            Throwable t = pending.pop();
+            if (t instanceof GradleException && !(t instanceof WorkerExecutionException)) {
+                return (GradleException) t;
+            }
+            if (t.getCause() != null) {
+                pending.push(t.getCause());
+            }
+            for (Throwable suppressed : t.getSuppressed()) {
+                pending.push(suppressed);
+            }
+        }
+        return e;
     }
 
     /** Unset optionals read as empty - the plugin gives every property a convention. */
@@ -241,13 +274,5 @@ public abstract class CheckReachabilityTask extends DefaultTask {
             formats.add(format);
         }
         return formats;
-    }
-
-    private String reportFiles(Path reportBase, List<ReportFormat> formats) {
-        List<String> files = new ArrayList<>();
-        for (ReportFormat format : formats) {
-            files.add(reportBase + format.suffix());
-        }
-        return String.join(", ", files);
     }
 }

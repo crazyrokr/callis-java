@@ -82,6 +82,36 @@ class ReachabilityPluginSpec extends Specification {
         mappingsMethod.isAnnotationPresent(org.gradle.api.tasks.Optional)
     }
 
+    def "given the extension when the task is realized then the maxHeapSize default and values reach the task"() {
+        given:
+        Project project = ProjectBuilder.builder().build()
+        project.plugins.apply(JavaPlugin)
+
+        when:
+        project.plugins.apply(ReachabilityPlugin)
+        def task = project.tasks.getByName("checkReachability")
+
+        then: "the convention is 1g"
+        task.getMaxHeapSize().get() == "1g"
+
+        when: "the user sets a value"
+        project.extensions.getByName("reachability").getMaxHeapSize().set("2g")
+
+        then:
+        task.getMaxHeapSize().get() == "2g"
+    }
+
+    def "given the work action class when it is inspected then the 9.8 worker parameter contract holds"() {
+        given:
+        def actionClass = ReachabilityWorkAction
+
+        expect: "the action carries the internal marker and the @Inject constructor the worker injects parameters through"
+        org.gradle.workers.internal.ProvidesWorkResult.isAssignableFrom(actionClass)
+        def ctor = actionClass.getConstructor(ReachabilityWorkAction.Params,
+                org.gradle.internal.instantiation.InstanceGenerator)
+        ctor.isAnnotationPresent(javax.inject.Inject)
+    }
+
     def "given extension values when the task is realized then they reach the task inputs"() {
         given:
         Project project = ProjectBuilder.builder().build()

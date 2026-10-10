@@ -36,4 +36,7 @@ public abstract class ReachabilityExtension {
 
     /** Comma-separated report formats: json, junitxml, sarif. */
     public abstract Property<String> getFormats();
+
+    /** Max heap of the forked analysis worker (M9); the daemon's heap no longer bounds the graph. */
+    public abstract Property<String> getMaxHeapSize();
 }

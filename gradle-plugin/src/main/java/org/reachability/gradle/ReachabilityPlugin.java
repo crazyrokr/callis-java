@@ -45,6 +45,7 @@ public class ReachabilityPlugin implements Plugin<Project> {
         extension.getCha().convention(false);
         extension.getPointerAnalysis().convention(false);
         extension.getFormats().convention("json,junitxml");
+        extension.getMaxHeapSize().convention("1g");
 
         SourceSet main = project.getExtensions().getByType(SourceSetContainer.class)
                 .getByName(SourceSet.MAIN_SOURCE_SET_NAME);
@@ -66,6 +67,7 @@ public class ReachabilityPlugin implements Plugin<Project> {
             task.getPointerAnalysis().set(extension.getPointerAnalysis());
             task.getFormats().set(extension.getFormats());
             task.getReportBase().convention(DEFAULT_REPORT_BASE);
+            task.getMaxHeapSize().set(extension.getMaxHeapSize());
             task.getBomFileContent().set(contentFile(project, task.getBomFile()));
             task.getOsvDirContent().set(contentDir(project, task.getOsvDir()));
             task.getMappingsContent().set(contentFile(project, task.getMappings()));
