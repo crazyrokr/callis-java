@@ -963,3 +963,26 @@ parse/path work dominates.
   * Enabling the bot on the repo is the remaining manual GitHub step:
     install the Renovate app (or bot) on the repository; it opens an
     onboarding PR that confirms the config, then starts creating PRs.
+  * Follow-up (first live run failed with HTTP 429s from
+    repo.maven.apache.org): two causes, two fixes.
+    (1) The coverage-gate specs in core/build.gradle.kts
+    ("org.reachability.analyzer.<pkg>:LINE|BRANCH:<min>") match the
+    group:artifact:version shape, so the gradle manager misparsed them as
+    Maven artifacts — and maven-plugin/pom.xml's dependency on this repo's
+    own `core` module is never published either; a packageRule disables
+    both name forms (bare artifact and full coordinate), so every run
+    saves 6 wasted metadata lookups that can only 404/429.
+    (2) hostRules caps repo.maven.apache.org at
+    `concurrentRequestLimit: 2` — the v44 name for the per-host burst
+    limit — so the remaining legitimate lookups (sootup, picocli, jackson,
+    the Maven toolchain) stay under Maven Central's rate limit.
+    Also revalidated against Renovate 44.149: `config:base` no longer
+    exists (the CLI migrates it to `config:recommended`, which pulls in
+    opinionated extras — dependency dashboard, forced action
+    replacements — this repo does not want), so the config extends no
+    preset and relies on the conservative bare defaults; the deprecated
+    `matchFiles`/`rebaseStalePrs` options became `matchFileNames`
+    (rebase-when-behind is the default, so no rebase option is needed).
+    Verified with `npx renovate --platform local --dry-run`: no
+    config-validation errors, no forced migration, zero
+    org/reachability lookups, all 60 real deps still extracted.

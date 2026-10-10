@@ -35,9 +35,10 @@ jobs:
 
       - uses: graalvm/setup-graalvm@v1
         with:
-          version: "25"
+          version: "25.4"
           java-version: "25"
           cache: "gradle"
+          distribution: "graalvm-community"
 
       - uses: gradle/actions/setup-gradle@v5
 

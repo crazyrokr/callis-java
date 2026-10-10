@@ -1,6 +1,13 @@
 // Renovate (https://docs.renovatebot.com) — automatic dependency-update PRs
 // for this repository.
 //
+// No preset is extended: Renovate 44's config:base no longer exists, and
+// config:recommended pulls in opinionated extras (dependency dashboard,
+// forced action replacements, extra grouping) this repo does not want.
+// The bare defaults stay conservative — no automerge, PR-based updates,
+// rebase when the base branch moves — so every update lands as a
+// reviewable PR gated by ./gradlew check in CI.
+//
 // Scope (the managers enabled by default):
 //   * gradle        — gradle/libs.versions.toml (the single source of truth:
 //                     Renovate edits the [versions] pins in place, so one
@@ -17,11 +24,17 @@
 //     directory is out of scope.
 //   * osv-maven — the OSV snapshot scripts/download-osv.sh downloads;
 //     pinned via osv-maven.sha256 (A14), not a dependency.
+//
+// Non-dependencies that still look like coordinates (disabled per-package,
+// see packageRules): the coverage-gate specs in core/build.gradle.kts
+// ("<pkg>:LINE|BRANCH:<min>") match the group:artifact:version shape, and
+// org.reachability:core is maven-plugin's dependency on this repo's own
+// module — neither exists in any remote repository.
+//
+// Maven Central answers bursts of maven-metadata.xml queries with HTTP 429,
+// so its lookups are capped at 2 concurrent (hostRules below).
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  // config:base — PR-based updates, no automerge, no platform automigration:
-  // every update lands as a reviewable PR gated by ./gradlew check in CI.
-  "extends": ["config:base"],
 
   "ignorePaths": [
     "examples/vulnerable-demo",
@@ -32,11 +45,35 @@
     // maven-plugin/pom.xml is pure build tooling (Maven APIs + compiler +
     // test deps): one combined PR instead of one per package.
     {
-      "matchFiles": ["maven-plugin/**"],
+      "matchFileNames": ["maven-plugin/**"],
       "groupName": "maven plugin toolchain"
+    },
+    // Not dependencies: the coverage-gate specs (core/build.gradle.kts) and
+    // the repo's own core module. Every lookup for them would 404 (or 429
+    // under rate limiting) and they can never produce a PR. Both name forms
+    // (bare artifact and full group:artifact) are listed so the match does
+    // not depend on how the manager splits the coordinates.
+    {
+      "matchPackageNames": [
+        "LINE",
+        "BRANCH",
+        "org.reachability.analyzer.sbom:LINE",
+        "org.reachability.analyzer.osv:LINE",
+        "org.reachability.analyzer.osv:BRANCH",
+        "org.reachability.analyzer.report:LINE",
+        "org.reachability.analyzer.analysis:BRANCH",
+        "core",
+        "org.reachability:core"
+      ],
+      "enabled": false
     }
   ],
 
-  // Stale PRs get rebased instead of sitting out of date (default: false).
-  "rebaseStalePrs": true,
+  // Keep Maven Central lookups under its burst rate limit (HTTP 429s).
+  "hostRules": [
+    {
+      "matchHost": "repo.maven.apache.org",
+      "concurrentRequestLimit": 2
+    }
+  ],
 }
