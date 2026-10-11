@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   M7e (A10): the Maven plugin front end. A separate Maven build inside the
-  Gradle repo (recorded deviation in the ADR): maven-plugin packaging requires
+  Gradle repo (recorded deviation in ADR 0011): maven-plugin packaging requires
   a Maven build. Depends on org.reachability:core published to the local
   repository by `./gradlew :core:publishToMavenLocal`.
 -->

@@ -8,7 +8,8 @@
     "durationMillis" : 382,
     "maxBytecodeMajor" : 61,
     "osvSnapshotSha256" : "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "osvSkippedRecords" : 2
+    "osvSkippedRecords" : 2,
+    "sbomFile" : "bom-mini.json"
   },
   "vulnerabilities" : [ {
     "id" : "VULN-POS",

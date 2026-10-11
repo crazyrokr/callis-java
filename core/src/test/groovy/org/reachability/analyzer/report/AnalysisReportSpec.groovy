@@ -15,7 +15,7 @@ class AnalysisReportSpec extends Specification {
         def entry = new AnalysisReport.VulnerabilityEntry("V-1", "pkg:maven/g/h@1", "g:h", "1", "UNREACHABLE",
                 true, "Summary of V-1", severity, "versions", path)
         def metadata = new AnalysisReport.ReportMetadata("0.1.0-SNAPSHOT", "RTA", 1, 2, 3, 4, 61,
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", 0)
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", 0, null)
         def report = new AnalysisReport(metadata, [entry, entry])
 
         when: "the original lists are mutated after construction"

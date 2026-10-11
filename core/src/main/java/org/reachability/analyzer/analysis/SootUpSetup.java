@@ -14,7 +14,7 @@ import sootup.java.core.views.JavaView;
  * {@link AnalysisException}, CLI exit 3) instead of passing silently.
  *
  * <p>All SootUp types are confined to this class and
- * {@link CallGraphFactory}, so a SootUp upgrade is a small diff (ADR A1).
+ * {@link CallGraphFactory}, so a SootUp upgrade is a small diff (ADR 0002, A1).
  */
 public final class SootUpSetup {
 
