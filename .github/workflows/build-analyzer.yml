@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "25"
+          java-version: "27"
 
       - uses: gradle/actions/setup-gradle@v6
 
@@ -42,7 +42,7 @@ jobs:
       - uses: graalvm/setup-graalvm@v1
         with:
           version: "25.4"
-          java-version: "25"
+          java-version: "27"
           cache: "gradle"
           distribution: "graalvm-community"
 
@@ -73,7 +73,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "25"
+          java-version: "27"
 
       - uses: gradle/actions/setup-gradle@v6
 
