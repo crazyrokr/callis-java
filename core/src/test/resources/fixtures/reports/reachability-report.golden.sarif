@@ -49,17 +49,15 @@
         "text" : "demo.MainDanger#main -> stublib.Stub#danger"
       },
       "locations" : [ {
-        "physicalLocation" : {
-          "artifactLocation" : {
-            "uri" : "pkg:maven/stublib/stublib@1.0"
-          }
-        },
         "logicalLocations" : [ {
           "name" : "demo.MainDanger#main"
         }, {
           "name" : "stublib.Stub#danger"
         } ]
-      } ]
+      } ],
+      "properties" : {
+        "purl" : "pkg:maven/stublib/stublib@1.0"
+      }
     } ]
   } ]
 }

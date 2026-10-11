@@ -18,13 +18,16 @@ import java.util.Set;
  * CI code-scanning UIs. One rule per distinct candidate id (the OSV
  * record's summary as {@code fullDescription}); a {@code results[]} entry
  * per REACHABLE vulnerability only — level {@code error}, the call trace
- * as the message, the component purl as the artifact location, one
- * logical location per distinct path hop (the trace can repeat a display
- * name — overloaded and bridge methods render identically — and a
- * duplicate item makes the GitHub upload action reject the whole
+ * as the message, the component purl in the result {@code properties},
+ * one logical location per distinct path hop (the trace can repeat a
+ * display name — overloaded and bridge methods render identically — and
+ * a duplicate item makes the GitHub upload action reject the whole
  * report, so the location list dedups while the message keeps the full
- * trace). UNREACHABLE candidates stay out of a findings document; the
- * JUnit XML carries the full verdicts.
+ * trace). The location carries no {@code physicalLocation}: GitHub code
+ * scanning post-processing rejects artifact URIs whose scheme does not
+ * match the checkout (a {@code pkg:} purl fails it, verified 2026-10-11).
+ * UNREACHABLE candidates stay out of a findings document; the JUnit XML
+ * carries the full verdicts.
  */
 public final class SarifReportWriter {
 
@@ -89,9 +92,9 @@ public final class SarifReportWriter {
                 continue;
             }
             ObjectNode location = MAPPER.createObjectNode();
-            ObjectNode physical = MAPPER.createObjectNode();
-            physical.set("artifactLocation", MAPPER.createObjectNode().put("uri", entry.purl()));
-            location.set("physicalLocation", physical);
+            // No physicalLocation: its artifactLocation would carry the purl's
+            // "pkg:" scheme, which GitHub code-scanning post-processing rejects
+            // (the URI scheme must match the checkout's).
             // One logical location per DISTINCT hop: a trace can repeat a display
             // name (overloaded/bridge methods render identically), and a duplicate
             // item in logicalLocations rejects the report at the GitHub upload.
@@ -111,6 +114,7 @@ public final class SarifReportWriter {
             result.put("level", "error");
             result.set("message", MAPPER.createObjectNode().put("text", String.join(" -> ", entry.path())));
             result.set("locations", locations);
+            result.set("properties", MAPPER.createObjectNode().put("purl", entry.purl()));
             results.add(result);
         }
         return results;

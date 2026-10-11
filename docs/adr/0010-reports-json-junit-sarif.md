@@ -12,7 +12,10 @@ must fail). **M7c (2026-10-09) added SARIF 2.1.0** as the third format
 code-scanning UIs — one rule per distinct candidate id (the OSV record's
 summary as `fullDescription`), a `results[]` entry per REACHABLE
 vulnerability only (level `error`, the call trace as the message, the
-component purl as the artifact location, one logical location per path hop).
+component purl in the result `properties` — the location carries no
+`physicalLocation`, because GitHub code-scanning post-processing rejects
+artifact-location URIs whose scheme does not match the checkout (a `pkg:` purl
+fails it; verified 2026-10-11) — one logical location per path hop).
 UNREACHABLE candidates stay out of the findings document by design — the JUnit
 XML carries the full verdicts. The OSV `summary` also moved into the JSON
 report's per-entry fields (M7c), so the evidence trail is shared across
@@ -123,3 +126,19 @@ formats.
   drops it). Core suite 328 → 329; end-to-end: the regenerated demo SARIF
   has 8 results, 0 duplicate logicalLocations. (The same-day maven-plugin
   CI red of the record lives in ADR 0011.)
+
+- **2026-10-11:** the `reachability-check` SARIF upload was *accepted* but
+  GitHub code-scanning *processing* failed — "SARIF URI scheme `pkg` did not
+  match the checkout URI scheme `file`" (all 8 results of the log4j 2.14.1
+  run). Root cause: the M7c design put the component purl in
+  `physicalLocation.artifactLocation.uri`; the upload action post-processes
+  locations against the checkout, and a purl is not a checkout path, so the
+  whole document was rejected. Fix: `resultsNode` drops `physicalLocation`
+  (the location keeps its deduped `logicalLocations` only) and carries the
+  component purl in the result `properties` (`"purl": …`) instead — the
+  evidence stays in the document, the purl is just no longer a URI claim.
+  The golden file was re-recorded from the writer and the
+  SarifReportWriterSpec pins the `properties.purl` location plus the absence
+  of `physicalLocation`. End-to-end: the regenerated demo SARIF carries the
+  8 results with purls in properties and no `pkg:` URI anywhere, so the
+  upload processes.

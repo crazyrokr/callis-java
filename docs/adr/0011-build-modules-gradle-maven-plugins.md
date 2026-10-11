@@ -331,3 +331,14 @@ the reflection pin in `ReachabilityPluginSpec` holds it.
   probes, core/build) and running the script: regenerated, plugin tests
   4/4, demo 2.14.1 red with reports / 2.25.5 green. (The same-day SARIF
   CI red of the record lives in ADR 0010.)
+
+- **2026-10-11:** the `maven-plugin` CI job failed again on a fresh
+  checkout: the e2e script's demo runs point `-Dreachability.osvDir` at
+  `osv-maven/`, which is gitignored and absent until
+  `scripts/download-osv.sh` runs (the consumer template downloads it in a
+  dedicated step; the job only ran the script) — both pins died with exit 2
+  and no reports. The script now downloads the snapshot when the directory
+  is missing (a local copy is reused as-is, mirroring
+  `reachability-check.yml`). Verified by deleting the local snapshot and
+  re-running: the download happened, and demo 2.14.1 fails with reports /
+  2.25.5 passes.

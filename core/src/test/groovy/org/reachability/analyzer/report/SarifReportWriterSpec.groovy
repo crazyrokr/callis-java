@@ -12,9 +12,11 @@ import java.nio.file.Path
 /**
  * M7c: the SARIF 2.1.0 findings writer (A9) — golden-file byte equality,
  * structural pins (one rule per distinct candidate id, a result per
- * REACHABLE only, the trace as message text, the purl as artifact
- * location, one logical location per hop — without duplicate items), the
- * dedup and empty-report edges, and the non-writable destination.
+ * REACHABLE only, the trace as message text, the purl in the result
+ * properties and no physicalLocation — GitHub code scanning rejects
+ * non-checkout-scheme artifact URIs at processing time —, one logical
+ * location per hop — without duplicate items), the dedup and
+ * empty-report edges, and the non-writable destination.
  */
 class SarifReportWriterSpec extends Specification {
 
@@ -94,10 +96,12 @@ class SarifReportWriterSpec extends Specification {
         result.get("level").asText() == "error"
         result.get("message").get("text").asText() == "demo.MainDanger#main -> stublib.Stub#danger"
 
-        and: "the location pins the component purl and carries one logical location per path hop"
+        and: "the result carries the component purl in its properties and no " +
+                "physicalLocation (a pkg: artifact URI makes GitHub code scanning " +
+                "reject the document at processing time)"
+        result.get("properties").get("purl").asText() == "pkg:maven/stublib/stublib@1.0"
         def location = result.get("locations").get(0)
-        location.get("physicalLocation").get("artifactLocation").get("uri").asText() ==
-                "pkg:maven/stublib/stublib@1.0"
+        !location.has("physicalLocation")
         def logical = location.get("logicalLocations")
         logical.size() == 2
         logical.get(0).get("name").asText() == "demo.MainDanger#main"
