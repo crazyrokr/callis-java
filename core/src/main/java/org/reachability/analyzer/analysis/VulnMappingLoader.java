@@ -2,12 +2,12 @@ package org.reachability.analyzer.analysis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -40,9 +40,8 @@ public final class VulnMappingLoader {
                     + ": root must be a JSON object mapping vulnerability id to target list");
         }
         TreeMap<String, List<VulnTarget>> result = new TreeMap<>();
-        Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
+        ObjectNode object = (ObjectNode) root;
+        for (Map.Entry<String, JsonNode> field : object.properties()) {
             JsonNode entries = field.getValue();
             if (entries == null || !entries.isArray()) {
                 throw new VulnMappingFormatException("malformed vuln-mappings file " + fileName(file)

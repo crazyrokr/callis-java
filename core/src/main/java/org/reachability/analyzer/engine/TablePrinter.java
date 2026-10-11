@@ -11,9 +11,9 @@ public final class TablePrinter {
     public static void print(DiagnosticSink sink, String[] header, List<String[]> rows) {
         int[] widths = columnWidths(header, rows);
         String format = format(widths);
-        sink.out(String.format(format, header));
+        sink.out(String.format(format, (Object[]) header));
         for (String[] row : rows) {
-            sink.out(String.format(format, row));
+            sink.out(String.format(format, (Object[]) row));
         }
     }
 
