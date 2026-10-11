@@ -98,7 +98,7 @@ jobs:
       # Always attach the reports — on failure they are the evidence.
       - name: Upload reachability reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reachability-report
           path: |
