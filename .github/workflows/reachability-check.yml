@@ -45,11 +45,51 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
+          # The demo builds with Maven; without this every run
+          # re-downloads the whole ~/.m2.
+          cache: maven
+
+      # Caches the Gradle dependencies and build state for the Fat-JAR
+      # build below (build-cache entries are shared with the
+      # build-analyzer workflow's shadowJar).
+      - uses: gradle/actions/setup-gradle@v6
 
       # A14: the OSV snapshot plus its sha256 pin (same value the analyzer
-      # computes; --osv-checksum below refuses a changed snapshot).
+      # computes; --osv-checksum below refuses a changed snapshot). Both are
+      # gitignored: cache them under the remote zip's ETag — it changes with
+      # every upstream re-upload, so a new snapshot invalidates the entry.
+      # The pin is restored with the directory (the script writes it next to,
+      # not inside, it). The URL mirrors the one in scripts/download-osv.sh.
+      - name: Detect OSV snapshot version
+        id: osv-etag
+        run: |
+          etag="$(curl -fsSLI --retry 3 \
+              https://osv-vulnerabilities.storage.googleapis.com/Maven/all.zip \
+              | grep -i '^etag:' | head -1 | cut -d' ' -f2 | tr -d '\r\"')"
+          [ -n "$etag" ] || { echo "FATAL: no ETag header from the snapshot URL"; exit 1; }
+          echo "etag=$etag" >> "$GITHUB_OUTPUT"
+
+      - name: Restore OSV snapshot
+        id: osv-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            osv-maven
+            osv-maven.sha256
+          key: osv-maven-${{ steps.osv-etag.outputs.etag }}
+
       - name: Download OSV Maven snapshot
+        if: steps.osv-cache.outputs.cache-hit != 'true'
         run: bash scripts/download-osv.sh osv-maven
+
+      - name: Save OSV snapshot
+        if: steps.osv-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            osv-maven
+            osv-maven.sha256
+          key: osv-maven-${{ steps.osv-etag.outputs.etag }}
 
       # --- Target project: Maven (the committed example) -------------------
       - name: "Build target (Maven: SBOM + dependency classpath)"

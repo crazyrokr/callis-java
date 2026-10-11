@@ -46,7 +46,11 @@ jobs:
           cache: "gradle"
           distribution: "graalvm-community"
 
+      # The graalvm action above already caches the Gradle user home
+      # (cache: "gradle"); keep setup-gradle from double-caching it.
       - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: external
 
       - name: Build the native binary
         run: ./gradlew :cli:nativeCompile
@@ -74,8 +78,48 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
+          # The e2e script builds the plugin and the demo with Maven;
+          # without this every run re-downloads the whole ~/.m2.
+          cache: maven
 
       - uses: gradle/actions/setup-gradle@v6
+
+      # A14: the snapshot is gitignored, so a fresh checkout lacks it.
+      # Key the cache by the remote zip's ETag (changes with every
+      # upstream re-upload, so a new snapshot invalidates the entry)
+      # and cache the pin file with the directory — the script writes
+      # it next to, not inside, the directory. The URL mirrors the one
+      # in scripts/download-osv.sh.
+      - name: Detect OSV snapshot version
+        id: osv-etag
+        run: |
+          etag="$(curl -fsSLI --retry 3 \
+              https://osv-vulnerabilities.storage.googleapis.com/Maven/all.zip \
+              | grep -i '^etag:' | head -1 | cut -d' ' -f2 | tr -d '\r\"')"
+          [ -n "$etag" ] || { echo "FATAL: no ETag header from the snapshot URL"; exit 1; }
+          echo "etag=$etag" >> "$GITHUB_OUTPUT"
+
+      - name: Restore OSV snapshot
+        id: osv-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            osv-maven
+            osv-maven.sha256
+          key: osv-maven-${{ steps.osv-etag.outputs.etag }}
+
+      - name: Download OSV Maven snapshot
+        if: steps.osv-cache.outputs.cache-hit != 'true'
+        run: bash scripts/download-osv.sh osv-maven
+
+      - name: Save OSV snapshot
+        if: steps.osv-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            osv-maven
+            osv-maven.sha256
+          key: osv-maven-${{ steps.osv-etag.outputs.etag }}
 
       - name: End-to-end (demo 2.14.1 red / 2.25.5 green)
         run: bash scripts/maven-plugin-e2e.sh
