@@ -1,4 +1,5 @@
 import org.gradle.api.file.DuplicatesStrategy
+import org.graalvm.buildtools.gradle.tasks.BuildNativeImageTask
 
 // A10: the command-line front end (picocli) over :core; packaged as the Fat-JAR
 // (shadow) and, from M7d, the native-image target.
@@ -107,6 +108,13 @@ application {
 // src/main/resources/META-INF/native-image/reachability-analyzer/.
 graalvmNative {
     // Build the binary from the project's main class and runtime classpath.
+}
+
+// JEP 519 (JDK 25, off by default): compact object headers in the
+// native-image compiler JVM, trimming its build-time heap. The flag
+// cannot change the AOT image layout, so the binary is unaffected.
+tasks.withType<BuildNativeImageTask> {
+    appendJvmArgs(listOf("-XX:+UseCompactObjectHeaders"))
 }
 
 tasks.shadowJar {

@@ -29,8 +29,11 @@ jobs:
       - name: Build Fat-JAR
         run: ./gradlew shadowJar
 
+      # -XX:+UseCompactObjectHeaders (JEP 519, JDK 25, off by default) is
+      # part of the documented Fat-JAR invocation — the sanity run starts
+      # with it enabled so a regression in the flag breaks this job.
       - name: Sanity - Fat-JAR starts
-        run: java -jar cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar --help
+        run: java -XX:+UseCompactObjectHeaders -jar cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar --help
 
   # M7d: the native-image binary (A2). GraalVM JDK 25 provides the
   # native-image compiler; `check` above stays under plain Temurin.

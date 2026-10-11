@@ -57,8 +57,10 @@ pipeline {
                 // Exit 1 (reachable) fails the pipeline naturally; exit 2/3
                 // (usage/analysis failure) fail it just as hard — a gate
                 // must never pass on a broken run.
+                // -XX:+UseCompactObjectHeaders (JEP 519, JDK 25, off by
+                // default) trims the analyzer's heap on object-heavy targets.
                 sh """
-                    java -jar ${ANALYZER_JAR} \
+                    java -XX:+UseCompactObjectHeaders -jar ${ANALYZER_JAR} \
                       --app-classes=${TARGET_DIR}/target/classes \
                       --classpath-file=${TARGET_DIR}/target/cp.txt \
                       --sbom=${TARGET_DIR}/target/bom.json \
