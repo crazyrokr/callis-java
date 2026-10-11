@@ -1,9 +1,18 @@
 # T62: reachability gate for a consumer project (plan.md Phase 6, A7/A12).
 #
-# On THIS repository the workflow is a living integration test (T65):
-# examples/vulnerable-demo pins log4j 2.14.1, so the job FAILS by design
-# with the JUnit XML report attached. Switching the demo's log4j.version
-# to the fixed release 2.25.5 makes it pass (verified 2026-10-07).
+# On THIS repository the workflow is a living integration test (T65) that
+# PASSES by design: examples/vulnerable-demo pins log4j 2.14.1, so
+# vulnerabilities are EXPECTED — the final step verifies that every id in
+# examples/vulnerable-demo/expected-reachable.txt is reported REACHABLE
+# and that all three report formats agree on the count. It fails only
+# when an expected id goes missing, when the run finds no candidates at
+# all, or when the run itself was unusable (exit 2/3). Switching the
+# demo's log4j.version to the fixed release 2.25.5 makes it fail (zero
+# candidates — every expected id goes missing; verified 2026-10-07).
+#
+# In a consumer repository (no expected-reachable list) the job keeps the
+# gate semantics: it fails exactly when a vulnerability is reachable
+# (analyzer exit 1) and passes on a clean run.
 #
 # To adopt for your own project: point the three --* arguments at your
 # target's classes / classpath file / CycloneDX SBOM (Maven and Gradle
@@ -59,10 +68,13 @@ jobs:
       - name: Build the analyzer Fat-JAR
         run: ./gradlew shadowJar
 
+      # The exit code is captured, not gating: on this repository exit 1
+      # (vulnerabilities reachable) is the EXPECTED outcome — the verify
+      # step below decides the job's fate from the reports themselves.
       - name: Run reachability analysis
         id: reachability
-        continue-on-error: true
         run: |
+          set +e
           java -jar cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
             --app-classes=examples/vulnerable-demo/target/classes \
             --classpath-file=examples/vulnerable-demo/target/cp.txt \
@@ -71,6 +83,9 @@ jobs:
             --osv-checksum="$(cut -d' ' -f1 osv-maven.sha256)" \
             --format=json,junitxml,sarif \
             --output=reachability-report
+          exit_code=$?
+          set -e
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           # Optional: class/method-level verdicts for critical CVEs:
           #   --mappings=vuln-mappings.json
 
@@ -86,8 +101,8 @@ jobs:
             reachability-report.sarif
 
       # M7c: the SARIF findings document in the code-scanning UI.
-      # continue-on-error keeps the job's fail-by-design semantics on the
-      # final step even on runners without the action.
+      # continue-on-error keeps the job's semantics on the verify step
+      # even on runners without the action.
       - name: Upload SARIF to code scanning
         if: always()
         continue-on-error: true
@@ -95,8 +110,74 @@ jobs:
         with:
           sarif_file: reachability-report.sarif
 
-      # Fail the job exactly when the analyzer said a vulnerability is
-      # reachable (exit 1) — or when the run itself was unusable (exit 2/3).
-      - name: Fail on reachable vulnerabilities
-        if: steps.reachability.outcome == 'failure'
-        run: exit 1
+      # T65: on this repository the demo is expected to be vulnerable, so
+      # the job's fate is decided from the reports, not the exit code:
+      # every expected id must be REACHABLE and all three formats must
+      # agree on the count. With no expected list (consumer repository)
+      # the step keeps the gate: fail on reachable vulnerabilities, pass
+      # on a clean run. if: always() — the report upload above fails when
+      # a report file is missing (exit 0/2/3), but the verdict must still
+      # be printed.
+      - name: Verify expected vulnerabilities were reported
+        if: always()
+        run: |
+          code="${{ steps.reachability.outputs.exit_code }}"
+          if [ -z "$code" ]; then
+            echo "FAIL: no analyzer exit code was captured"
+            exit 1
+          fi
+          if [ "$code" -ge 2 ]; then
+            echo "FAIL: the analyzer run was unusable (exit $code); see its log above"
+            exit 1
+          fi
+          python3 - "$code" <<'PYEOF'
+          import json, sys
+          import xml.etree.ElementTree as ET
+
+          code = int(sys.argv[1])
+          expected_path = "examples/vulnerable-demo/expected-reachable.txt"
+
+          def fail(message):
+              print(f"FAIL: {message}")
+              sys.exit(1)
+
+          try:
+              with open(expected_path) as fh:
+                  expected = [line.strip() for line in fh
+                              if line.strip() and not line.startswith("#")]
+          except FileNotFoundError:
+              expected = []
+
+          if code == 0:
+              if expected:
+                  fail(f"the demo is expected to be vulnerable, but the run "
+                       f"found no candidates (expected: {', '.join(expected)})")
+              print("OK: no vulnerability candidates (consumer gate: clean)")
+              sys.exit(0)
+
+          with open("reachability-report.json") as fh:
+              reachable = [entry["id"] for entry in json.load(fh)["vulnerabilities"]
+                           if entry["verdict"] == "REACHABLE"]
+          if not reachable:
+              fail("the analyzer reported reachable vulnerabilities, "
+                   "but the JSON report has none")
+
+          suite = ET.parse("reachability-report.junit.xml").getroot()
+          xml_failures = int(suite.get("failures", "0"))
+          with open("reachability-report.sarif") as fh:
+              sarif_results = len(json.load(fh)["runs"][0]["results"])
+          if not (len(reachable) == xml_failures == sarif_results):
+              fail(f"the report formats disagree on the REACHABLE count: "
+                   f"json={len(reachable)}, junit={xml_failures}, sarif={sarif_results}")
+
+          if expected:
+              missing = [vuln for vuln in expected if vuln not in reachable]
+              if missing:
+                  fail(f"expected REACHABLE ids missing from the report: "
+                       f"{', '.join(missing)}")
+              print(f"OK: all {len(expected)} expected ids are REACHABLE and the "
+                    f"three formats agree ({len(reachable)} reachable)")
+          else:
+              fail(f"{len(reachable)} reachable vulnerabilities: "
+                   f"{', '.join(reachable)} (consumer gate: the pipeline must fail)")
+          PYEOF

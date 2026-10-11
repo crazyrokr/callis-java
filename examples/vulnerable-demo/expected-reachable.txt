@@ -1,0 +1,11 @@
+# T65 living demo contract (reachability-check.yml): the GHSA ids that
+# must be reported REACHABLE while this demo pins log4j 2.14.1.
+# One id per line; '#' starts a comment, blank lines are ignored.
+GHSA-3pxv-7cmr-fjr4
+GHSA-6hg6-v5c8-fphq
+GHSA-7rjr-3q55-vv33
+GHSA-8489-44mv-ggj8
+GHSA-jfh8-c2jp-5v3q
+GHSA-p6xc-xr62-6r2g
+GHSA-qv9r-c865-cp47
+GHSA-vc5p-v9hr-52mj

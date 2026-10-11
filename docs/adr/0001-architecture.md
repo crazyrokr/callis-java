@@ -89,14 +89,21 @@ ADR 0003 and ADR 0012; the SootUp 3.x API-repackaging record lives in ADR 0002.)
   wall on the full 7,168-record snapshot (A16 < 60 s). Fixed pin **2.25.5**
   (at or beyond every log4j fixed bound in the current snapshot: log4j-core
   max fixed 2.25.4, log4j-api `GHSA-qv9r-c865-cp47` fixed 2.25.5): **exit 0,
-  zero candidates**.
+  zero candidates**. The workflow verifies the vulnerable pin against the
+  committed `expected-reachable.txt` (the 8 ids, one per line): it passes
+  on 2.14.1 and fails on 2.25.5 (2026-10-11).
 
 - **2026-10-07 (M6 verification):** consumer CI templates (T62/T63). The GH
-  workflow runs the analyzer with `continue-on-error` + a
-  `steps.*.outcome == 'failure'` gate, so it **fails by design** on this
-  repository (the committed demo pin is the red variant) while always
-  uploading both reports; the Gradle target variant is documented inline
-  (A7). The Jenkinsfile is declarative (`Build & SBOM` → `OSV cache` via
+  workflow captures the analyzer's exit code, always uploads the reports,
+  then verifies them: **on this repository it passes by design** (the
+  committed demo pin is the red variant — vulnerabilities are expected):
+  every id in `examples/vulnerable-demo/expected-reachable.txt` must be
+  reported REACHABLE and all three formats must agree on the count; with
+  no expected list (consumer repository) the gate semantics hold (fail
+  when a vulnerability is reachable, pass on a clean run). (2026-10-11:
+  the original `continue-on-error` + `steps.*.outcome == 'failure'` gate
+  treated the expected exit 1 as a failure, so the verify step above
+  replaced it.) The Gradle target variant is documented inline (A7). The Jenkinsfile is declarative (`Build & SBOM` → `OSV cache` via
   `stash` with the pin verified on every build → `Reachability Analysis` →
   archive `reachability-report.*`); it fails naturally on exit 1. Groovy
   note recorded: named-argument calls inside a `$(…)` GString interpolation

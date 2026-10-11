@@ -275,11 +275,14 @@ Relative `-D` paths resolve against the project's basedir.
 - **`.github/workflows/reachability-check.yml`** — the consumer template (A7):
   JDK 25 → `download-osv.sh` → build the target (Maven: `mvn package` +
   `dependency:build-classpath`; Gradle variant documented inline) → run the
-  analyzer with `continue-on-error` → **always upload both reports** → fail the
-  job exactly when the analyzer exits non-zero. On *this* repository it is a
-  **living integration test**: the committed demo pins the vulnerable 2.14.1,
-  so the job fails by design with the JUnit XML attached; switching the pom to
-  2.25.5 makes it pass.
+  analyzer (exit code captured) → **always upload the reports** → verify. On
+  *this* repository it is a **living integration test that passes by
+  design**: the committed demo pins the vulnerable 2.14.1, so the job passes
+  when every id in `examples/vulnerable-demo/expected-reachable.txt` is
+  reported REACHABLE and all three formats agree on the count (switching the
+  pom to 2.25.5 makes it fail — zero candidates). In a consumer repository
+  (no expected list) the gate semantics hold: fail when a vulnerability is
+  reachable, pass on a clean run.
 - **`Jenkinsfile`** — declarative pipeline: `Build & SBOM` → `OSV cache`
   (download once, `stash` across builds, pin verified on every build) →
   `Reachability Analysis` → archive `reachability-report.*` on every outcome.
