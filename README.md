@@ -67,7 +67,9 @@ mvn -B dependency:build-classpath -Dmdep.outputFile=target/cp.txt
 cd ../..
 
 # 4. Analyze
-java -jar cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
+#    -XX:+UseCompactObjectHeaders (JEP 519, JDK 25, off by default) trims
+#    the heap on object-heavy targets; the Fat-JAR needs JDK 25 anyway (A12).
+java -XX:+UseCompactObjectHeaders -jar cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
   --app-classes=examples/vulnerable-demo/target/classes \
   --classpath-file=examples/vulnerable-demo/target/cp.txt \
   --sbom=examples/vulnerable-demo/target/bom.json \
