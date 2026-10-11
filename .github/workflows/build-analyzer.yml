@@ -21,7 +21,7 @@ jobs:
           distribution: temurin
           java-version: "25"
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Build, test, static analysis, coverage
         run: ./gradlew check
@@ -46,7 +46,7 @@ jobs:
           cache: "gradle"
           distribution: "graalvm-community"
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Build the native binary
         run: ./gradlew :cli:nativeCompile
@@ -75,7 +75,7 @@ jobs:
           distribution: temurin
           java-version: "25"
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: End-to-end (demo 2.14.1 red / 2.25.5 green)
         run: bash scripts/maven-plugin-e2e.sh
