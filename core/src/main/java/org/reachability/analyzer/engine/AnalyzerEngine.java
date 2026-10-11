@@ -203,7 +203,7 @@ public final class AnalyzerEngine {
         printVerdictTable(sink, verdicts);
 
         AnalysisReport report = buildReport(System.currentTimeMillis() - started, context, result,
-                request.policy(), detected, request.osvDir(), repository, verdicts, sink);
+                request.policy(), detected, request.osvDir(), request.sbom(), repository, verdicts, sink);
         List<String> written = new ArrayList<>();
         for (int i = 0; i < formats.size(); i++) {
             Path file = reportFiles.get(i);
@@ -247,7 +247,7 @@ public final class AnalyzerEngine {
     /** M5 T51: assembles the report model from the run's measured state. */
     private static AnalysisReport buildReport(long durationMillis, AnalysisContext context,
                                              CallGraphFactory.BuildResult result, CallGraphPolicy policy,
-                                             List<MethodSignature> detected, Path osvDir,
+                                             List<MethodSignature> detected, Path osvDir, Path sbom,
                                              OsvRepository repository,
                                              List<ReachabilityChecker.Verdict> verdicts, DiagnosticSink sink) {
         String osvSha256 = null;
@@ -260,7 +260,8 @@ public final class AnalyzerEngine {
                 "0.1.0-SNAPSHOT", policy.name(), detected.size(),
                 result.nodeCount(), result.edgeCount(), durationMillis,
                 context.maxBytecodeMajor(), osvSha256,
-                repository.fileCount() - repository.validRecordCount());
+                repository.fileCount() - repository.validRecordCount(),
+                sbom == null ? null : sbom.toString());
         List<AnalysisReport.VulnerabilityEntry> entries = new ArrayList<>();
         for (ReachabilityChecker.Verdict verdict : verdicts) {
             VulnerabilityCandidate candidate = verdict.candidate();

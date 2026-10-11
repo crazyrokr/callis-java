@@ -26,7 +26,7 @@ signatures (contrary to `plan.md` step 4.1). Reachability is therefore:
   `vuln-mappings.json` (vuln ID → classes/methods) or, where an advisory documents
   them, OSV `database_specific` fields.
 
-This trade-off is documented in the single ADR (§4) and is the #1 risk (§8).
+This trade-off is documented in the ADRs (§4) and is the #1 risk (§8).
 
 **Bytecode support (verified 2026-10-05):** the analyzer runs on Java 25 and
 analyzes projects built with **Java 25 or older** — SootUp 3.0.1 (ASM 9.10.1)
@@ -80,7 +80,8 @@ dependency-vulnerability-analyzer/
 ├── implementation-plan.md            # this file
 ├── docs/
 │   └── adr/
-│       └── 0001-architecture.md      # SINGLE shared ADR (append, don't fork)
+│       ├── 0001-architecture.md      # overview + index (corrections, pins)
+│       └── 0002…0019-*.md           # one ADR per decision (A1–A16) + ops ADRs
 ├── scripts/
 │   └── download-osv.sh              # Phase 3 helper
 ├── .github/workflows/
@@ -130,10 +131,12 @@ corporate groupId is preferred.
 
 ---
 
-## 4. Architectural Decisions — single ADR
+## 4. Architectural Decisions — per-decision ADRs
 
-All decisions below are recorded **once** in `docs/adr/0001-architecture.md`
-(created in M0, amended in place for later changes — no per-change ADRs).
+All decisions below are recorded **once each** in `docs/adr/`:
+`0001-architecture.md` is the overview + index (created in M0), A1–A16 each
+own an ADR (`0002`–`0017`, stable `A#` labels), and later changes amend the
+specific decision ADR in place (split 2026-10-10).
 
 | # | Decision | Rationale |
 |---|---|---|
@@ -485,7 +488,7 @@ the fixed version makes it pass. Jenkinsfile reviewed for syntax (lint).
 
 - [ ] `reachability-analyzer-<v>.jar` (Shadow Fat-JAR, Main-Class set)
 - [ ] Gradle wrapper + `gradle/libs.versions.toml` committed
-- [ ] `docs/adr/0001-architecture.md` (single ADR, A1–A16)
+- [ ] `docs/adr/` (0001 index + 0002–0017 per-decision ADRs A1–A16 + 0018/0019 ops)
 - [ ] `scripts/download-osv.sh`
 - [ ] `.github/workflows/{build-analyzer,reachability-check}.yml`
 - [ ] `Jenkinsfile`
@@ -503,7 +506,7 @@ the fixed version makes it pass. Jenkinsfile reviewed for syntax (lint).
 | R2 | SootUp memory blowup on large classpaths | Analyzer OOMs in CI | Classpath scoped to SBOM-resolved jars (A7); memory-guard error with `-Xmx` hint; `--cha` cheaper fallback; per-jar skip on parse failure (warn, continue) |
 | R3 | Reflection / dynamic dispatch (Spring wiring, SPI) | False UNREACHABLE (dangerous direction) | RTA from *all* detected entry points incl. framework handlers; CHA comparison available; report prints entry-point list for audit; M7 IFDS precision mode |
 | R4 | SootUp next major (4.x) lands mid-project | API churn | Pin 3.0.1; isolation in `SootUpSetup` (single file owns SootUp types) so upgrade = one-file diff |
-| R5 | `ComparableVersion` semantics differ from OSV intent at boundaries | Off-by-one at `fixed` boundary | Boundary cases pinned in M2 tests with real records; document semantics in ADR |
+| R5 | `ComparableVersion` semantics differ from OSV intent at boundaries | Off-by-one at `fixed` boundary | Boundary cases pinned in M2 tests with real records; document semantics in ADR 0015 |
 | R6 | Shade plugin conflicts (signatures, module-info, service files) | Fat-JAR fails at runtime | Filters configured at M0; service files merged via `ServicesResourceTransformer` |
 | R7 | Air-gapped envs can't reach GCS | No OSV data | `download-osv.sh` produces a zip; publish to Nexus/Artifactory as an ops step (documented, not coded); `--osv-dir` is the only contract |
 | R8 | SootUp **silently parses zero classes** for bytecode versions it does not handle (verified 2026-10-05: 2.0.0 empty on v69; 3.0.1 empty on hand-crafted v70) | Silent false "no vulnerability" verdict when a target moves to newer bytecode | SootUp 3.0.1 (ceiling = Java 25, verified) + startup guard (A12: version probe + zero-classes check → exit 3); report records detected class-file version |
@@ -539,7 +542,7 @@ the fixed version makes it pass. Jenkinsfile reviewed for syntax (lint).
 
 ---
 
-### Corrections to `plan.md` (recorded for the ADR)
+### Corrections to `plan.md` (recorded in ADR 0001)
 - **SootUp 3.0.1** — 3.x **is published on Maven Central** (verified on
   repo1.maven.org 2026-10-05; the Solr search index lags and still reports
   2.0.0). Supersedes any "wait for 3.x" caveat; raises the target-bytecode

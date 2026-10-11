@@ -12,9 +12,13 @@ import java.nio.file.Path
 /**
  * M7c: the SARIF 2.1.0 findings writer (A9) — golden-file byte equality,
  * structural pins (one rule per distinct candidate id, a result per
- * REACHABLE only, the trace as message text, the purl as artifact
- * location, one logical location per hop — without duplicate items), the
- * dedup and empty-report edges, and the non-writable destination.
+ * REACHABLE only, the trace as message text, the purl in the result
+ * properties, a physical location at the analyzed SBOM file — GitHub code
+ * scanning requires a physical location per result and rejects
+ * non-checkout-scheme artifact URIs at processing time —, one logical
+ * location per hop — without duplicate items), the dedup, the
+ * absolute-SBOM-path and missing-SBOM edges, the empty-report edge, and
+ * the non-writable destination.
  */
 class SarifReportWriterSpec extends Specification {
 
@@ -27,7 +31,7 @@ class SarifReportWriterSpec extends Specification {
     private static AnalysisReport fixedReport() {
         def metadata = new AnalysisReport.ReportMetadata(
                 "0.1.0-SNAPSHOT", "RTA", 3, 27, 44, 382, 61,
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", 2)
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", 2, "bom-mini.json")
         def entries = [
                 new AnalysisReport.VulnerabilityEntry("VULN-POS", "pkg:maven/stublib/stublib@1.0", "stublib", "1.0",
                         "REACHABLE", true, "Test vulnerability in the stublib fixture",
@@ -94,10 +98,13 @@ class SarifReportWriterSpec extends Specification {
         result.get("level").asText() == "error"
         result.get("message").get("text").asText() == "demo.MainDanger#main -> stublib.Stub#danger"
 
-        and: "the location pins the component purl and carries one logical location per path hop"
+        and: "the result carries the component purl in its properties and a " +
+                "physical location at the analyzed SBOM file (a pkg: artifact " +
+                "URI makes GitHub code scanning reject the document, and a " +
+                "result without a physical location is rejected outright)"
+        result.get("properties").get("purl").asText() == "pkg:maven/stublib/stublib@1.0"
         def location = result.get("locations").get(0)
-        location.get("physicalLocation").get("artifactLocation").get("uri").asText() ==
-                "pkg:maven/stublib/stublib@1.0"
+        location.get("physicalLocation").get("artifactLocation").get("uri").asText() == "bom-mini.json"
         def logical = location.get("logicalLocations")
         logical.size() == 2
         logical.get(0).get("name").asText() == "demo.MainDanger#main"
@@ -106,7 +113,7 @@ class SarifReportWriterSpec extends Specification {
 
     def "given two reachable entries with the same vuln id when written then one rule but both results"() {
         given: "one vuln record hitting two components; the second has no declared version"
-        def metadata = new AnalysisReport.ReportMetadata("0.1.0-SNAPSHOT", "RTA", 1, 5, 9, 12, null, null, 0)
+        def metadata = new AnalysisReport.ReportMetadata("0.1.0-SNAPSHOT", "RTA", 1, 5, 9, 12, null, null, 0, null)
         def entries = [
                 new AnalysisReport.VulnerabilityEntry("DUP", "pkg:maven/g/h@1.0", "g:h", "1.0",
                         "REACHABLE", true, "Duplicate fixture vulnerability", ["HIGH"], "versions",
@@ -135,7 +142,8 @@ class SarifReportWriterSpec extends Specification {
         given: "a bridge-style trace: two distinct methods share one display name" +
                 " (log4j's static LoggerConfig#log(LoggerConfig, LogEvent) helper and the" +
                 " instance LoggerConfig#log(LogEvent) both render as 'LoggerConfig#log')"
-        def metadata = new AnalysisReport.ReportMetadata("0.1.0-SNAPSHOT", "RTA", 1, 5, 9, 12, null, null, 0)
+        def metadata = new AnalysisReport.ReportMetadata("0.1.0-SNAPSHOT", "RTA", 1, 5, 9, 12, null, null, 0,
+                "bom-mini.json")
         def path = ["com.example.demo.App#main", "LoggerConfig#log", "LoggerConfig#log", "LoggerConfig#processLogEvent"]
         def entries = [
                 new AnalysisReport.VulnerabilityEntry("VULN-DUP-HOP",
@@ -153,14 +161,18 @@ class SarifReportWriterSpec extends Specification {
 
         and: "the logical locations keep the order but drop the repeated item" +
                 " (a duplicate item in one location makes the GitHub upload action reject the whole report)"
-        def logical = result.get("locations").get(0).get("logicalLocations")
+        def location = result.get("locations").get(0)
+        def logical = location.get("logicalLocations")
         def names = (0..<logical.size()).collect { logical.get(it).get("name").asText() }
         names == ["com.example.demo.App#main", "LoggerConfig#log", "LoggerConfig#processLogEvent"]
+
+        and: "the physical location points at the analyzed SBOM file"
+        location.get("physicalLocation").get("artifactLocation").get("uri").asText() == "bom-mini.json"
     }
 
     def "given a report with no candidates when written then a valid document with no rules or results"() {
         given:
-        def metadata = new AnalysisReport.ReportMetadata("0.1.0-SNAPSHOT", "RTA", 1, 5, 9, 12, null, null, 0)
+        def metadata = new AnalysisReport.ReportMetadata("0.1.0-SNAPSHOT", "RTA", 1, 5, 9, 12, null, null, 0, null)
         def file = workDir.resolve("empty.sarif")
 
         when:
@@ -172,6 +184,43 @@ class SarifReportWriterSpec extends Specification {
         node.get("version").asText() == "2.1.0"
         run.get("tool").get("driver").get("rules").isEmpty()
         run.get("results").isEmpty()
+    }
+
+    def "given an absolute SBOM path when written then the physical location carries a file:// URI"() {
+        given: "an absolute path is not a valid relative URI; the writer must emit the file:// form"
+        def metadata = new AnalysisReport.ReportMetadata("0.1.0-SNAPSHOT", "RTA", 1, 5, 9, 12, null, null, 0,
+                "/home/runner/work/repo/repo/bom.json")
+        def entries = [
+                new AnalysisReport.VulnerabilityEntry("V-ABS", "pkg:maven/g/h@1.0", "g:h", "1.0",
+                        "REACHABLE", true, "Absolute SBOM fixture vulnerability", [], "versions",
+                        ["demo.Main#main", "stublib.Stub#danger"])]
+        def file = workDir.resolve("abs.sarif")
+
+        when:
+        new SarifReportWriter().write(new AnalysisReport(metadata, entries), file)
+        def result = MAPPER.readTree(file.toFile()).get("runs").get(0).get("results").get(0)
+
+        then: "the physical location URI is the file:// form (checkout-scheme compatible)"
+        result.get("locations").get(0).get("physicalLocation").get("artifactLocation")
+                .get("uri").asText() == "file:///home/runner/work/repo/repo/bom.json"
+    }
+
+    def "given a report without a recorded SBOM file when written then the results carry no physical location"() {
+        given: "the metadata field is nullable; without it the location falls back to logical locations"
+        def metadata = new AnalysisReport.ReportMetadata("0.1.0-SNAPSHOT", "RTA", 1, 5, 9, 12, null, null, 0, null)
+        def entries = [
+                new AnalysisReport.VulnerabilityEntry("V-NO-SBOM", "pkg:maven/g/h@1.0", "g:h", "1.0",
+                        "REACHABLE", true, "Missing SBOM fixture vulnerability", [], "versions",
+                        ["demo.Main#main", "stublib.Stub#danger"])]
+        def file = workDir.resolve("no-sbom.sarif")
+
+        when:
+        new SarifReportWriter().write(new AnalysisReport(metadata, entries), file)
+        def result = MAPPER.readTree(file.toFile()).get("runs").get(0).get("results").get(0)
+
+        then:
+        !result.get("locations").get(0).has("physicalLocation")
+        result.get("locations").get(0).get("logicalLocations").size() == 2
     }
 
     def "given a non-writable destination when writing then an IOException is thrown"() {

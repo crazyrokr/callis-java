@@ -1,4 +1,4 @@
-// The coverage gate tool (ADR 0001 amendment): evaluates JaCoCo execution data
+// The coverage gate tool (ADR 0018): evaluates JaCoCo execution data
 // against the plan's gates, replacing Gradle's jacocoTestCoverageVerification
 // whose ant worker in Gradle 9.x evaluates empty execution data vacuously.
 plugins {

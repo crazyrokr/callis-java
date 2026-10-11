@@ -18,13 +18,19 @@ import java.util.Set;
  * CI code-scanning UIs. One rule per distinct candidate id (the OSV
  * record's summary as {@code fullDescription}); a {@code results[]} entry
  * per REACHABLE vulnerability only — level {@code error}, the call trace
- * as the message, the component purl as the artifact location, one
- * logical location per distinct path hop (the trace can repeat a display
- * name — overloaded and bridge methods render identically — and a
- * duplicate item makes the GitHub upload action reject the whole
- * report, so the location list dedups while the message keeps the full
- * trace). UNREACHABLE candidates stay out of a findings document; the
- * JUnit XML carries the full verdicts.
+ * as the message, the component purl in the result {@code properties}, a
+ * {@code physicalLocation} at the analyzed SBOM file, one logical location
+ * per distinct path hop (the trace can repeat a display name — overloaded
+ * and bridge methods render identically — and a duplicate item makes the
+ * GitHub upload action reject the whole report, so the location list
+ * dedups while the message keeps the full trace). The physical location is
+ * the SBOM file because GitHub code-scanning post-processing requires
+ * every result to carry a physical location, and its artifact URI must
+ * match the checkout's scheme (a {@code pkg:} purl fails that, and a
+ * location without a physical one is rejected outright; both verified
+ * 2026-10-11) — so the purl stays in {@code properties}, not a URI claim.
+ * UNREACHABLE candidates stay out of a findings document; the JUnit XML
+ * carries the full verdicts.
  */
 public final class SarifReportWriter {
 
@@ -49,7 +55,7 @@ public final class SarifReportWriter {
         tool.set("driver", driver);
         ObjectNode run = MAPPER.createObjectNode();
         run.set("tool", tool);
-        run.set("results", resultsNode(report.vulnerabilities()));
+        run.set("results", resultsNode(report.vulnerabilities(), report.metadata().sbomFile()));
         ArrayNode runs = MAPPER.createArrayNode();
         runs.add(run);
         root.set("runs", runs);
@@ -82,16 +88,22 @@ public final class SarifReportWriter {
         return rules;
     }
 
-    private static ArrayNode resultsNode(List<VulnerabilityEntry> entries) {
+    private static ArrayNode resultsNode(List<VulnerabilityEntry> entries, String sbomFile) {
         ArrayNode results = MAPPER.createArrayNode();
         for (VulnerabilityEntry entry : entries) {
             if (!REACHABLE.equals(entry.verdict())) {
                 continue;
             }
             ObjectNode location = MAPPER.createObjectNode();
-            ObjectNode physical = MAPPER.createObjectNode();
-            physical.set("artifactLocation", MAPPER.createObjectNode().put("uri", entry.purl()));
-            location.set("physicalLocation", physical);
+            // physicalLocation at the analyzed SBOM file: the post-processor
+            // requires one per result, and its URI must match the checkout's
+            // scheme — the purl's "pkg:" scheme fails that, so the purl stays
+            // in the result properties instead (verified 2026-10-11).
+            if (sbomFile != null) {
+                ObjectNode artifact = MAPPER.createObjectNode();
+                artifact.put("uri", sbomFileUri(sbomFile));
+                location.set("physicalLocation", MAPPER.createObjectNode().set("artifactLocation", artifact));
+            }
             // One logical location per DISTINCT hop: a trace can repeat a display
             // name (overloaded/bridge methods render identically), and a duplicate
             // item in logicalLocations rejects the report at the GitHub upload.
@@ -111,8 +123,15 @@ public final class SarifReportWriter {
             result.put("level", "error");
             result.set("message", MAPPER.createObjectNode().put("text", String.join(" -> ", entry.path())));
             result.set("locations", locations);
+            result.set("properties", MAPPER.createObjectNode().put("purl", entry.purl()));
             results.add(result);
         }
         return results;
+    }
+
+    /** Checkout-relative paths stay as given; absolute paths become file:// URIs. */
+    private static String sbomFileUri(String sbomFile) {
+        Path path = Path.of(sbomFile);
+        return path.isAbsolute() ? path.toUri().toString() : sbomFile;
     }
 }
