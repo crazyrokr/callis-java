@@ -108,7 +108,7 @@ tasks.register<JavaExec>("spotbugsMain") {
 val miniAppDir = File(projectDir, "src/test/resources/fixtures/mini-app")
 val bytecodeDir = File(projectDir, "src/test/resources/fixtures/bytecode")
 
-val compileFixtureLib by tasks.registering(JavaCompile::class) {
+val compileFixtureLib = tasks.register<JavaCompile>("compileFixtureLib") {
     // Match the original M3 fixture bytes: bare javac default debug subset (lines + source, no vars).
     options.setDebug(false)
     options.compilerArgs = listOf("-g:lines,source")
@@ -117,7 +117,7 @@ val compileFixtureLib by tasks.registering(JavaCompile::class) {
     classpath = files()
 }
 
-val stublibJar by tasks.registering(Task::class) {
+val stublibJar = tasks.register<Task>("stublibJar") {
     group = "build"
     description = "Jars the stublib, libpkg and jakarta fixture packages into stublib.jar"
     val libDir = File(layout.buildDirectory.asFile.get(), "fixtures/mini-app/lib")
@@ -139,7 +139,7 @@ val stublibJar by tasks.registering(Task::class) {
     }
 }
 
-val compileFixtureApp by tasks.registering(JavaCompile::class) {
+val compileFixtureApp = tasks.register<JavaCompile>("compileFixtureApp") {
     dependsOn(stublibJar)
     options.setDebug(false)
     options.compilerArgs = listOf("-g:lines,source")
@@ -150,7 +150,7 @@ val compileFixtureApp by tasks.registering(JavaCompile::class) {
     classpath = files(File(layout.buildDirectory.asFile.get(), "fixtures/mini-app/lib"))
 }
 
-val compileFixtureBytecode by tasks.registering(JavaCompile::class) {
+val compileFixtureBytecode = tasks.register<JavaCompile>("compileFixtureBytecode") {
     options.setDebug(false)
     options.compilerArgs = listOf("-g:lines,source")
     source = fileTree(bytecodeDir) { include("**/*.java") }
@@ -166,7 +166,7 @@ val compileFixtureBytecode by tasks.registering(JavaCompile::class) {
 val v70ProbeHex = "cafebabe00000046000501000b546f6f4e657750726f6265" +
         "02010100106a6176612f6c616e672f4f626a65637402030001000200040000000000000000"
 
-val generateFixtureBytecode by tasks.registering(Task::class) {
+val generateFixtureBytecode = tasks.register<Task>("generateFixtureBytecode") {
     group = "build"
     description = "Emits the bytecode probe fixtures: v69 as compiled, v70 as the hand-crafted 61-byte probe"
     val v69Source = File(layout.buildDirectory.asFile.get(), "fixtures/bytecode/Release25Probe.class")
@@ -214,7 +214,7 @@ dependencies {
     gateTool(project(":tools:coveragetool"))
 }
 
-val coverageGate by tasks.registering(JavaExec::class) {
+val coverageGate = tasks.register<JavaExec>("coverageGate") {
     group = "verification"
     description = "Enforces the plan's coverage gates (sbom/osv/report 100% line, osv/analysis 90% branch)"
     dependsOn("test")

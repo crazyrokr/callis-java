@@ -1,3 +1,5 @@
+import org.gradle.api.file.DuplicatesStrategy
+
 // A10: the command-line front end (picocli) over :core; packaged as the Fat-JAR
 // (shadow) and, from M7d, the native-image target.
 plugins {
@@ -112,6 +114,9 @@ tasks.shadowJar {
     // README) — pin it to the pre-split name now that the project is :cli.
     archiveBaseName = "reachability-analyzer"
     archiveClassifier = "all"
+    // mergeServiceFiles() only runs on a duplicate if it survives the copy spec;
+    // the shadow default is EXCLUDE, which silently drops the other service entries.
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
     manifest {
         attributes["Main-Class"] = "org.reachability.analyzer.ReachabilityAnalyzerCli"
     }
