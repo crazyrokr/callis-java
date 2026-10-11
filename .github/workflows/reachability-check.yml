@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # A12: the Fat-JAR is Java 25 bytecode — run it with JDK 25.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "25"
