@@ -52,6 +52,11 @@ public final class JsonReportWriter {
             node.putNull("osvSnapshotSha256");
         }
         node.put("osvSkippedRecords", metadata.osvSkippedRecords());
+        if (metadata.sbomFile() != null) {
+            node.put("sbomFile", metadata.sbomFile());
+        } else {
+            node.putNull("sbomFile");
+        }
         return node;
     }
 

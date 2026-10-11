@@ -49,6 +49,11 @@
         "text" : "demo.MainDanger#main -> stublib.Stub#danger"
       },
       "locations" : [ {
+        "physicalLocation" : {
+          "artifactLocation" : {
+            "uri" : "bom-mini.json"
+          }
+        },
         "logicalLocations" : [ {
           "name" : "demo.MainDanger#main"
         }, {

@@ -153,11 +153,13 @@ SPDX **3.x** is refused with an explicit error naming the version ("only SPDX
 With `--format sarif` the run also writes `<output>.sarif` (SARIF 2.1.0) for
 CI code-scanning UIs: one rule per candidate (the OSV record's summary as
 `fullDescription`), one `error` result per REACHABLE vulnerability (the call
-trace as the message, the component purl in the result `properties`, one
-logical location per path hop). No `physicalLocation` is emitted — GitHub
-code-scanning post-processing rejects artifact URIs whose scheme does not
-match the checkout (a `pkg:` purl fails it), and UNREACHABLE candidates are
-findings-format out by design — the JUnit XML carries the full verdicts.
+trace as the message, the component purl in the result `properties`, a
+`physicalLocation` at the analyzed SBOM file, one logical location per path
+hop). The physical location is the SBOM file because GitHub code-scanning
+post-processing requires one per result, and its URI must match the
+checkout's scheme (a `pkg:` purl fails that, so the purl stays in
+`properties`); UNREACHABLE candidates are findings-format out by design —
+the JUnit XML carries the full verdicts.
 
 ## Native image (M7d, A2)
 

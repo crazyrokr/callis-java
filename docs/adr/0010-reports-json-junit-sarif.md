@@ -1,6 +1,6 @@
 # ADR 0010 — A9: Reports: JSON + JUnit XML + SARIF 2.1.0
 
-- **Status:** accepted (2026-10-05); amended: M5 verification (2026-10-07), M6 verification (2026-10-07), M7c (2026-10-09), 2026-10-10 (SARIF logical-location dedup)
+- **Status:** accepted (2026-10-05); amended: M5 verification (2026-10-07), M6 verification (2026-10-07), M7c (2026-10-09), 2026-10-10 (SARIF logical-location dedup), 2026-10-11 (SARIF code-scanning locations)
 - **Related:** ADR 0001 (index), ADR 0015 (SBOM formats), ADR 0018 (coverage gates)
 
 ## Decision
@@ -12,10 +12,11 @@ must fail). **M7c (2026-10-09) added SARIF 2.1.0** as the third format
 code-scanning UIs — one rule per distinct candidate id (the OSV record's
 summary as `fullDescription`), a `results[]` entry per REACHABLE
 vulnerability only (level `error`, the call trace as the message, the
-component purl in the result `properties` — the location carries no
-`physicalLocation`, because GitHub code-scanning post-processing rejects
-artifact-location URIs whose scheme does not match the checkout (a `pkg:` purl
-fails it; verified 2026-10-11) — one logical location per path hop).
+component purl in the result `properties`, a `physicalLocation` at the
+analyzed SBOM file, one logical location per path hop — the purl is not a
+location URI, because GitHub code-scanning post-processing requires a
+physical location per result and rejects artifact-location URIs whose scheme
+does not match the checkout (a `pkg:` purl fails it; verified 2026-10-11)).
 UNREACHABLE candidates stay out of the findings document by design — the JUnit
 XML carries the full verdicts. The OSV `summary` also moved into the JSON
 report's per-entry fields (M7c), so the evidence trail is shared across
@@ -142,3 +143,23 @@ formats.
   of `physicalLocation`. End-to-end: the regenerated demo SARIF carries the
   8 results with purls in properties and no `pkg:` URI anywhere, so the
   upload processes.
+
+- **2026-10-11 (second processing red):** the same-day fix above was
+  insufficient — the upload was accepted again, but processing failed with
+  `locationFromSarifResult: expected a physical location` (all 8 results):
+  the post-processor also requires every result to carry a
+  `physicalLocation`, and the location with only `logicalLocations` had
+  none. The only checkout-scheme-safe anchor the report knows is the
+  analyzed SBOM file. Fix: `AnalysisReport.ReportMetadata` gained a
+  `sbomFile` field (the engine records the `--sbom` path as given; the JSON
+  report serializes it — absent ⇒ `null` — and both report goldens were
+  re-recorded); `SarifReportWriter` emits
+  `physicalLocation.artifactLocation.uri` at that path (checkout-relative
+  as given; absolute paths become `file://` URIs) while the purl stays in
+  the result `properties`. SarifReportWriterSpec 6 → 8 (absolute SBOM path
+  ⇒ `file://` URI; missing SBOM file ⇒ location without a physical
+  location), JsonReportWriterSpec pins the new metadata key (round-trip key
+  order, JSON-null edge); core suite 329 → 331 (total 409). End-to-end: the
+  regenerated demo SARIF carries 8 results, each with a physical location
+  at `examples/vulnerable-demo/target/bom.json`, the deduped logical
+  locations, and no `pkg:` URI anywhere.

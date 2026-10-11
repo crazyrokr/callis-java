@@ -22,7 +22,7 @@ public record AnalysisReport(ReportMetadata metadata, List<VulnerabilityEntry> v
     public record ReportMetadata(String toolVersion, String callGraphBuilder, int entryPointCount,
                                  int callGraphNodes, int callGraphCalls, long durationMillis,
                                  Integer maxBytecodeMajor, String osvSnapshotSha256,
-                                 int osvSkippedRecords) {
+                                 int osvSkippedRecords, String sbomFile) {
     }
 
     public record VulnerabilityEntry(String id, String purl, String component, String componentVersion,
