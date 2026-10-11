@@ -51,7 +51,7 @@
       "locations" : [ {
         "physicalLocation" : {
           "artifactLocation" : {
-            "uri" : "pkg:maven/stublib/stublib@1.0"
+            "uri" : "bom-mini.json"
           }
         },
         "logicalLocations" : [ {
@@ -59,7 +59,10 @@
         }, {
           "name" : "stublib.Stub#danger"
         } ]
-      } ]
+      } ],
+      "properties" : {
+        "purl" : "pkg:maven/stublib/stublib@1.0"
+      }
     } ]
   } ]
 }

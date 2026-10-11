@@ -10,7 +10,7 @@ import java.nio.file.Path
 
 /**
  * Unit tests for the coverage gate (replaces the Gradle verification task,
- * ADR 0001 amendment). The "real data" tests need the execution data of the
+ * ADR 0018). The "real data" tests need the execution data of the
  * main test task, so this spec runs after it (see build.gradle.kts).
  */
 class CoverageGateSpec extends Specification {

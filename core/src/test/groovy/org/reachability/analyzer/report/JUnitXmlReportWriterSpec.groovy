@@ -28,7 +28,7 @@ class JUnitXmlReportWriterSpec extends Specification {
     private static AnalysisReport fixedReport() {
         def metadata = new AnalysisReport.ReportMetadata(
                 "0.1.0-SNAPSHOT", "RTA", 3, 27, 44, 382, 61,
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", 2)
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", 2, "bom-mini.json")
         def entries = [
                 new AnalysisReport.VulnerabilityEntry("VULN-POS", "pkg:maven/stublib/stublib@1.0", "stublib", "1.0",
                         "REACHABLE", true, "Test vulnerability in the stublib fixture",

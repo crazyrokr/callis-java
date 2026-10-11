@@ -25,7 +25,7 @@ class JsonReportWriterSpec extends Specification {
     private static AnalysisReport fixedReport() {
         def metadata = new AnalysisReport.ReportMetadata(
                 "0.1.0-SNAPSHOT", "RTA", 3, 27, 44, 382, 61,
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", 2)
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", 2, "bom-mini.json")
         def entries = [
                 new AnalysisReport.VulnerabilityEntry("VULN-POS", "pkg:maven/stublib/stublib@1.0", "stublib", "1.0",
                         "REACHABLE", true, "Test vulnerability in the stublib fixture",
@@ -71,7 +71,8 @@ class JsonReportWriterSpec extends Specification {
         and: "metadata keys in declaration order, values intact"
         def meta = node.get("metadata")
         meta.fieldNames().toList() == ["toolVersion", "callGraphBuilder", "entryPointCount", "callGraphNodes",
-                "callGraphCalls", "durationMillis", "maxBytecodeMajor", "osvSnapshotSha256", "osvSkippedRecords"]
+                "callGraphCalls", "durationMillis", "maxBytecodeMajor", "osvSnapshotSha256", "osvSkippedRecords",
+                "sbomFile"]
         meta.get("toolVersion").asText() == report.metadata().toolVersion()
         meta.get("callGraphBuilder").asText() == report.metadata().callGraphBuilder()
         meta.get("entryPointCount").asInt() == report.metadata().entryPointCount()
@@ -79,6 +80,7 @@ class JsonReportWriterSpec extends Specification {
         meta.get("maxBytecodeMajor").asInt() == report.metadata().maxBytecodeMajor()
         meta.get("osvSnapshotSha256").asText() == report.metadata().osvSnapshotSha256()
         meta.get("osvSkippedRecords").asInt() == report.metadata().osvSkippedRecords()
+        meta.get("sbomFile").asText() == report.metadata().sbomFile()
 
         and: "each entry round-trips field for field, in order"
         def vulnerabilities = node.get("vulnerabilities")
@@ -104,7 +106,7 @@ class JsonReportWriterSpec extends Specification {
     def "given null optional metadata when written then the fields are JSON nulls"() {
         given:
         def metadata = new AnalysisReport.ReportMetadata(
-                "0.1.0-SNAPSHOT", "RTA", 1, 5, 9, 12, null, null, 0)
+                "0.1.0-SNAPSHOT", "RTA", 1, 5, 9, 12, null, null, 0, null)
         def file = workDir.resolve("null-metadata.json")
 
         when:
@@ -114,6 +116,7 @@ class JsonReportWriterSpec extends Specification {
         then: "absent values serialize as null, empty entries as an empty array"
         node.get("metadata").get("maxBytecodeMajor").isNull()
         node.get("metadata").get("osvSnapshotSha256").isNull()
+        node.get("metadata").get("sbomFile").isNull()
         node.get("vulnerabilities").isArray()
         node.get("vulnerabilities").isEmpty()
     }

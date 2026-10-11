@@ -20,7 +20,7 @@ import java.util.List;
  *
  * <p>Replaces the Gradle {@code jacocoTestCoverageVerification} task, whose
  * ant-based worker evaluates empty execution data in Gradle 9.x and therefore
- * passes vacuously (see ADR 0001 amendment).
+ * passes vacuously (see ADR 0018).
  *
  * <p>{@code --exclude <class>} keeps a class out of the analyzed class files
  * entirely (both numerator and denominator). Classes excluded from the

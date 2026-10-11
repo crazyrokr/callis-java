@@ -153,9 +153,13 @@ SPDX **3.x** is refused with an explicit error naming the version ("only SPDX
 With `--format sarif` the run also writes `<output>.sarif` (SARIF 2.1.0) for
 CI code-scanning UIs: one rule per candidate (the OSV record's summary as
 `fullDescription`), one `error` result per REACHABLE vulnerability (the call
-trace as the message, the component purl as the artifact location, one logical
-location per path hop). UNREACHABLE candidates are findings-format out by
-design — the JUnit XML carries the full verdicts.
+trace as the message, the component purl in the result `properties`, a
+`physicalLocation` at the analyzed SBOM file, one logical location per path
+hop). The physical location is the SBOM file because GitHub code-scanning
+post-processing requires one per result, and its URI must match the
+checkout's scheme (a `pkg:` purl fails that, so the purl stays in
+`properties`); UNREACHABLE candidates are findings-format out by design —
+the JUnit XML carries the full verdicts.
 
 ## Native image (M7d, A2)
 
@@ -305,9 +309,9 @@ in `src/test/resources/fixtures/bytecode/`).
 execution data against the plan's gates (sbom/osv/report 100% line, analysis
 ≥ 90% branch) via `org.reachability.coveragetool.CoverageGate`. It replaces
 Gradle's `jacocoTestCoverageVerification` task, whose ant worker in Gradle 9.x
-evaluates the execution data as empty and would pass vacuously (see the ADR).
+evaluates the execution data as empty and would pass vacuously (see ADR 0018).
 
 ## License / origin
 
-Greenfield project; see `docs/adr/0001-architecture.md` (single ADR) and
-`implementation-plan.md`.
+Greenfield project; see `docs/adr/` (0001 overview + index, one ADR per
+decision 0002–0017, ops ADRs 0018–0019) and `implementation-plan.md`.

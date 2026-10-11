@@ -53,6 +53,15 @@ run_demo() {
     fi
 }
 
+# The demo runs need the OSV snapshot (A14): osv-maven/ is gitignored, so
+# a fresh checkout (CI) lacks it and the mojo fails with exit 2 — download
+# it the same way the consumer template (reachability-check.yml) does; a
+# local copy is reused as-is.
+if [ ! -d osv-maven ]; then
+    step "download OSV Maven snapshot (A14)"
+    bash scripts/download-osv.sh osv-maven || { echo "FAILED: OSV snapshot download"; fail=1; }
+fi
+
 run_demo 2.14.1 1
 run_demo 2.25.5 0
 
