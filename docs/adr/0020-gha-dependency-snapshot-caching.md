@@ -39,3 +39,16 @@ entry.
 - Committing the pin under a non-ignored name: this repository
   intentionally keeps the pin uncommitted (consumer repositories commit
   theirs, ADR 0015); the ETag key tracks the actual upstream state instead.
+
+## Amendments
+
+- **2026-10-12:** the `native` job now runs `setup-gradle`'s default
+  **enhanced** state caching (⚡ in the job UI): `graalvm/setup-graalvm`
+  no longer passes `cache: "gradle"` (the JDK install it performs is
+  tool-cached regardless; the option only added a second, classic
+  `actions/cache` save of the same directory) and the
+  `cache-provider: external` override is dropped. The "one mechanism
+  caches" rule above still holds — the mechanism is just ⚡ now. The
+  key is build-file + JDK-version based, so the entry may be shared
+  with the `build` job (both Java 25): safe, the dependency cache is
+  JDK-agnostic and a concurrent save simply loses to the first.

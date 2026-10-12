@@ -49,14 +49,16 @@ jobs:
         with:
           version: "25.4"
           java-version: "25"
-          cache: "gradle"
           distribution: "graalvm-community"
 
-      # The graalvm action above already caches the Gradle user home
-      # (cache: "gradle"); keep setup-gradle from double-caching it.
+      # Gradle user-home caching is setup-gradle's default enhanced state
+      # caching (⚡ in the job UI) — the graalvm action's own
+      # `cache: "gradle"` (classic actions/cache) was dropped so one
+      # mechanism caches, not two. The key is build-file + JDK-version
+      # based, so this job may share the entry with `build` (both Java
+      # 25): the dependency cache is JDK-agnostic and a concurrent save
+      # simply loses to the first.
       - uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-provider: external
 
       - name: Build the native binary
         run: ./gradlew :cli:nativeCompile
