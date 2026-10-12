@@ -178,6 +178,44 @@ reports to the fat JAR — so CI can run the native binary instead of the
 JVM. `build-analyzer.yml` carries the `native` job (GraalVM 25 runner);
 `check` itself stays under plain Temurin and never builds the binary.
 
+## Docker image (A2)
+
+The native binary links only against glibc + zlib (static-partial), so
+it ships in a `distroless/base` image — no shell, no package manager,
+~24 MB on pull (ADR 0022).
+`build-analyzer.yml` builds it from the `native` job's artifact on every
+push to `main` and publishes it to GitHub Packages:
+
+```bash
+docker pull ghcr.io/crazyrokr/reachability-analyzer:latest   # or :<commit-sha>
+```
+
+The image is the same CLI: `WORKDIR /work`, the `ENTRYPOINT` is the
+binary, and a bare `docker run` prints `--help`. There is no shell inside
+(distroless ships none) — only the CLI's own flags work. Mount the target project
+and the OSV snapshot, pass absolute paths; reports are written to the
+mounted workdir. `--classpath-file` usually holds absolute paths into your
+local Maven repository, so mount that repository at the same path — a
+classpath jar the container cannot read degrades that component's verdict
+to `NO_CLASS_INFO` (exit 0), i.e. a silently green run:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/examples/vulnerable-demo:/work" \
+  -v "$(pwd)/osv-maven:/osv:ro" \
+  -v "$HOME/.m2:$HOME/.m2:ro" \
+  ghcr.io/crazyrokr/reachability-analyzer \
+  --app-classes=/work/target/classes \
+  --classpath-file=/work/target/cp.txt \
+  --sbom=/work/target/bom.json \
+  --osv-dir=/osv \
+  --osv-checksum="$(cut -d' ' -f1 osv-maven.sha256)" \
+  --output=/work/reachability-report
+```
+
+Single-arch `linux/amd64` (the binary is built on the amd64 runner;
+multi-arch would need a per-arch native build).
+
 ## Build plugins (M7e/M8, A10)
 
 The same engine runs in-process from both build systems.
@@ -318,5 +356,6 @@ evaluates the execution data as empty and would pass vacuously (see ADR 0018).
 
 ## License / origin
 
-Greenfield project; see `docs/adr/` (0001 overview + index, one ADR per
-decision 0002–0017, ops ADRs 0018–0019) and `implementation-plan.md`.
+Greenfield project; see `docs/adr/` (0001 overview + index; one ADR per
+decision, 0002–0022, with 0018–0021 the operational ones) and
+`implementation-plan.md`.

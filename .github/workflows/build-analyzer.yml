@@ -71,6 +71,49 @@ jobs:
           name: reachability-analyzer-native
           path: cli/build/native/
 
+  # Docker delivery of the native binary (ADR 0022): the artifact from the
+  # `native` job packaged as a FROM-scratch image, published to GitHub
+  # Packages. PRs cannot push to packages (read-only token), so the job
+  # runs on push only; `packages: write` is granted at job level, not
+  # workflow level.
+  docker:
+    needs: native
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download native binary
+        uses: actions/download-artifact@v7
+        with:
+          name: reachability-analyzer-native
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          # Only the binary's directory is the build context — the 21.5 MB
+          # binary, nothing else, reaches the builder.
+          context: reachability-analyzer-native/nativeCompile
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/reachability-analyzer:latest
+            ghcr.io/${{ github.repository_owner }}/reachability-analyzer:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
   # M7e: the Maven plugin (A10) — a separate Maven build inside the Gradle
   # repo (recorded deviation). The script publishes :core locally, installs
   # the plugin, and runs reachability:check on the demo: the vulnerable

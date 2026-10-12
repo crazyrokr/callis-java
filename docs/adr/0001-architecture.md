@@ -44,6 +44,9 @@ Exit code 1 on any reachable vulnerability, 0 otherwise.
 | [0017](0017-caching-parallelism-deferred.md) | A16 | Caching & parallelism deferred, benchmark-gated |
 | [0018](0018-coverage-gate-tooling.md) | — | Coverage gate tooling (`tools:coveragetool`, M1) |
 | [0019](0019-renovate-configuration.md) | — | Renovate configuration (automatic dependency-update PRs) |
+| [0020](0020-gha-dependency-snapshot-caching.md) | — | GitHub Actions dependency and snapshot caching |
+| [0021](0021-compact-object-headers.md) | — | Compact object headers enabled for the analyzer |
+| [0022](0022-docker-image-native-binary.md) | A2 (amended) | Docker image of the native binary, published to GitHub Packages |
 
 ## Corrections to plan.md (recorded for traceability)
 
