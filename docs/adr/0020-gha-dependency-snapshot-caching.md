@@ -39,3 +39,63 @@ entry.
 - Committing the pin under a non-ignored name: this repository
   intentionally keeps the pin uncommitted (consumer repositories commit
   theirs, ADR 0015); the ETag key tracks the actual upstream state instead.
+- A `prepare` job that warms the dependency cache before the parallel
+  jobs: in steady state it adds a serialized step to every run (worse
+  wall-clock), and on a cache miss the three jobs already download
+  concurrently — 3× the bandwidth, but still one wall-clock pass. It
+  would save bandwidth, never time, so it was rejected.
+
+## Amendments
+
+- **2026-10-12:** the `native` job now runs `setup-gradle`'s default
+  **enhanced** state caching (⚡ in the job UI): `graalvm/setup-graalvm`
+  no longer passes `cache: "gradle"` (the JDK install it performs is
+  tool-cached regardless; the option only added a second, classic
+  `actions/cache` save of the same directory) and the
+  `cache-provider: external` override is dropped. The "one mechanism
+  caches" rule above still holds — the mechanism is just ⚡ now. The
+  key is build-file + JDK-version based, so the entry may be shared
+  with the `build` job (both Java 25): safe, the dependency cache is
+  JDK-agnostic and a concurrent save simply loses to the first.
+
+- **2026-10-12:** the **Gradle build cache** is enabled
+  (`org.gradle.caching=true` in `gradle.properties`): compile/test
+  outputs land in the same enhanced-cached user home, so the three
+  parallel jobs stop each re-compiling from scratch — `build` compiled
+  core+cli+coveragetool for `check`, `native` re-compiled core+cli for
+  `nativeCompile`, and `maven-plugin` compiled `:core` a third time for
+  `publishToMavenLocal`. Keys are input- and toolchain-JDK-sensitive
+  (Temurin and GraalVM entries stay separate); concurrent saves from
+  the parallel jobs are first-save-wins. Measured locally
+  (Temurin / GraalVM 25.0.3): `clean check` 54 s → **13 s (24 tasks
+  FROM-CACHE, suite and coverage gate green)**; a repeated GraalVM
+  `clean :cli:nativeCompile` runs the compiles FROM-CACHE and only
+  re-runs the native-image step (~1.5–2 min — the job's new floor).
+
+- **2026-10-12:** the `native` job's **GraalVM JDK download** is cached.
+  `graalvm/setup-graalvm` installs the JDK into the runner's ephemeral
+  tool cache (`~/.cache/graalvm-community-jdk-<ver>_<os>-<arch>_bin/
+  <semver>/<arch>` — the action's `downloadExtractAndCacheJDK` /
+  `tc.cacheDir`; the runner image ships no GraalVM, so it was
+  re-downloaded on every run). The extracted JDK is **~857 MB, above
+  `actions/cache`'s 500 MB per-entry limit**, so the *compressed* tool
+  cache (one `tar -czf` of the installed directory, **~363 MB** for
+  25.4/x64) is restored/saved under a version-keyed entry and
+  pre-extracted into the tool cache on a hit — the action's
+  `tc.find()` then finds the JDK and only sets `JAVA_HOME` (the action
+  itself always runs; only the download is skipped).
+
+- **2026-10-12:** the `native` job's **`native-image` build is gated on
+  a content hash of the binary's inputs**: `git archive` of
+  `core/src/main` + `cli/src/main` + `gradle/` (catalog) + the build
+  scripts + `gradle.properties`, sha256'd, keys a cache entry holding
+  the built binary (`reachability-analyzer-native-<hash>-graalvm-<ver>`).
+  On a hit the previous binary is restored and the ~2 min
+  `nativeCompile` is skipped; the (restored) binary is still uploaded as
+  the run's artifact, so the `docker` job publishes the `:<sha>`/`latest`
+  tags for every commit. A push that changes only docs/workflows (e.g.
+  renovate action bumps) no longer rebuilds the binary; any source,
+  dependency, or GraalVM change does. Verified locally: the hash is
+  stable across runs and changes with a one-line source edit (probe
+  commit, reset afterwards); the compressed tool-cache entry measures
+  363 MB.

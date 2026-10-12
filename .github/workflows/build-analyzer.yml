@@ -40,29 +40,99 @@ jobs:
 
   # M7d: the native-image binary (A2). GraalVM JDK 25 provides the
   # native-image compiler; `check` above stays under plain Temurin.
+  # ADR 0020: the GraalVM JDK download and the native-image build itself
+  # are content-cached (see the step comments).
   native:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
+      # The GraalVM JDK installs into the runner's ephemeral tool cache
+      # (~/.cache) and is re-downloaded on every run (the runner image
+      # ships no GraalVM). The extracted JDK is ~857 MB — above
+      # actions/cache's 500 MB per-entry limit — so the COMPRESSED tool
+      # cache (~363 MB) is cached instead: on a hit it is extracted back
+      # into the tool cache and the action's tc.find() finds the JDK, so
+      # it only sets JAVA_HOME (no download). Bump the key and the
+      # directory names below together when the version changes.
+      - name: Restore GraalVM tool cache
+        id: graalvm-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: graalvm-jdk
+          key: graalvm-community-jdk-25.4-linux-x64
+
+      - name: Pre-install GraalVM into the tool cache
+        if: steps.graalvm-cache.outputs.cache-hit == 'true'
+        run: |
+          dest="${RUNNER_TOOL_CACHE:-$HOME/.cache}/graalvm-community-jdk-25.4_linux-x64_bin/25.4.0/x64"
+          mkdir -p "$dest"
+          tar -xzf graalvm-jdk/graalvm-community-jdk-25.4_linux-x64_bin.tar.gz -C "$dest"
+
       - uses: graalvm/setup-graalvm@v1
         with:
           version: "25.4"
           java-version: "25"
-          cache: "gradle"
           distribution: "graalvm-community"
 
-      # The graalvm action above already caches the Gradle user home
-      # (cache: "gradle"); keep setup-gradle from double-caching it.
-      - uses: gradle/actions/setup-gradle@v6
+      - name: Compress the GraalVM tool cache
+        if: steps.graalvm-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p graalvm-jdk
+          tar -czf graalvm-jdk/graalvm-community-jdk-25.4_linux-x64_bin.tar.gz \
+            -C "${RUNNER_TOOL_CACHE:-$HOME/.cache}/graalvm-community-jdk-25.4_linux-x64_bin/25.4.0/x64" .
+
+      - name: Save GraalVM tool cache
+        if: steps.graalvm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
         with:
-          cache-provider: external
+          path: graalvm-jdk
+          key: graalvm-community-jdk-25.4-linux-x64
+
+      # Gradle user-home caching is setup-gradle's default enhanced state
+      # caching (⚡ in the job UI) — the graalvm action's own
+      # `cache: "gradle"` (classic actions/cache) was dropped so one
+      # mechanism caches, not two. The key is build-file + JDK-version
+      # based, so this job may share the entry with `build` (both Java
+      # 25): the dependency cache is JDK-agnostic and a concurrent save
+      # simply loses to the first.
+      - uses: gradle/actions/setup-gradle@v6
+
+      # The binary is a deterministic function of its inputs (main
+      # sources, dependency catalog, build config, GraalVM version).
+      # Hash them: on a hit the previous binary is restored and the
+      # ~2 min native-image step is skipped — a push that changes only
+      # docs/workflows (e.g. renovate action bumps) does not change the
+      # binary.
+      - name: Hash the binary inputs
+        id: inputs
+        run: |
+          hash="$(git archive HEAD core/src/main cli/src/main gradle \
+                    settings.gradle.kts gradle.properties \
+                    core/build.gradle.kts cli/build.gradle.kts \
+                    | sha256sum | cut -d' ' -f1)"
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+
+      - name: Restore built binary
+        id: binary-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: cli/build/native
+          key: reachability-analyzer-native-${{ steps.inputs.outputs.hash }}-graalvm-25.4
 
       - name: Build the native binary
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         run: ./gradlew :cli:nativeCompile
 
       - name: Sanity - native binary starts
         run: cli/build/native/nativeCompile/cli --version
+
+      - name: Save built binary
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: cli/build/native
+          key: reachability-analyzer-native-${{ steps.inputs.outputs.hash }}-graalvm-25.4
 
       - name: Upload native binary
         if: always()
@@ -70,6 +140,49 @@ jobs:
         with:
           name: reachability-analyzer-native
           path: cli/build/native/
+
+  # Docker delivery of the native binary (ADR 0022): the artifact from the
+  # `native` job packaged as a FROM-scratch image, published to GitHub
+  # Packages. PRs cannot push to packages (read-only token), so the job
+  # runs on push only; `packages: write` is granted at job level, not
+  # workflow level.
+  docker:
+    needs: native
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download native binary
+        uses: actions/download-artifact@v7
+        with:
+          name: reachability-analyzer-native
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          # Only the binary's directory is the build context — the 21.5 MB
+          # binary, nothing else, reaches the builder.
+          context: reachability-analyzer-native/nativeCompile
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/reachability-analyzer:latest
+            ghcr.io/${{ github.repository_owner }}/reachability-analyzer:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
   # M7e: the Maven plugin (A10) — a separate Maven build inside the Gradle
   # repo (recorded deviation). The script publishes :core locally, installs

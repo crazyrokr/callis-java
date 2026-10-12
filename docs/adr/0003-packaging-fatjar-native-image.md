@@ -63,3 +63,11 @@ classes through its own source locators, not `Class.forName`.
     plugin.
   * README: new "Native image (M7d)" section (build command, binary path,
     measured startup, CI job note).
+
+- **2026-10-12 (ADR 0022, Docker image):** the current
+  `:cli:nativeCompile` output re-measured under GraalVM 25.0.3 is
+  **35.8 MB, dynamically linked against glibc (`libc`/`libm`/`ld-linux`)
+  and `libz` only** — native-image's default static-partial linking; the
+  21.5 MB / "statically linked" figures above no longer hold for the
+  current toolchain. The ADR 0022 image decision is based on this fact
+  (`distroless/base`, not `scratch`).
