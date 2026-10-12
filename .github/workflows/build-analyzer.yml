@@ -156,10 +156,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Without `path`, download-artifact extracts into the workspace root,
+      # not into a directory named after the artifact — pin the target so
+      # the build context below resolves.
       - name: Download native binary
         uses: actions/download-artifact@v7
         with:
           name: reachability-analyzer-native
+          path: reachability-analyzer-native
 
       - uses: docker/setup-buildx-action@v4
 
