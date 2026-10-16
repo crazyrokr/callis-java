@@ -8,7 +8,7 @@ spock = "2.4-groovy-4.0"
 groovy = "4.0.33"
 checkstyle = "14.3.0"
 jacoco = "0.8.15"
-spotbugs = "4.10.4"
+spotbugs = "4.10.5"
 
 [libraries]
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
