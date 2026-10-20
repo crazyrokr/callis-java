@@ -1,6 +1,6 @@
 # Single source of truth for every dependency pin (see docs/adr/0001-architecture.md).
 [versions]
-jackson = "2.22.3"
+jackson = "2.22.4"
 picocli = "4.7.7"
 mavenArtifact = "3.10.0"
 sootup = "3.0.1"
