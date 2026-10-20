@@ -36,7 +36,9 @@
 // (hostRules below).
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-
+  "extends": [
+    "config:recommended"
+  ],
   "ignorePaths": [
     "examples/vulnerable-demo",
     "osv-maven"
