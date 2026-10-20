@@ -66,13 +66,13 @@
       "matchPackageNames": [
         "LINE",
         "BRANCH",
-        "org.reachability.analyzer.sbom:LINE",
-        "org.reachability.analyzer.osv:LINE",
-        "org.reachability.analyzer.osv:BRANCH",
-        "org.reachability.analyzer.report:LINE",
-        "org.reachability.analyzer.analysis:BRANCH",
+        "org.crazyrock.callis.sbom:LINE",
+        "org.crazyrock.callis.osv:LINE",
+        "org.crazyrock.callis.osv:BRANCH",
+        "org.crazyrock.callis.report:LINE",
+        "org.crazyrock.callis.analysis:BRANCH",
         "core",
-        "org.reachability:core"
+        "org.crazyrock.callis:core"
       ],
       "enabled": false
     }

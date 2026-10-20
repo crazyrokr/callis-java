@@ -37,7 +37,7 @@ onboarding PR that confirms the config, then starts creating PRs.
 - **2026-10-10:** Follow-up (first live run failed with HTTP 429s from
   repo.maven.apache.org): two causes, two fixes.
   (1) The coverage-gate specs in core/build.gradle.kts
-  ("org.reachability.analyzer.<pkg>:LINE|BRANCH:<min>") match the
+  ("org.crazyrock.callis.<pkg>:LINE|BRANCH:<min>") match the
   group:artifact:version shape, so the gradle manager misparsed them as
   Maven artifacts — and maven-plugin/pom.xml's dependency on this repo's
   own `core` module is never published either; a packageRule disables

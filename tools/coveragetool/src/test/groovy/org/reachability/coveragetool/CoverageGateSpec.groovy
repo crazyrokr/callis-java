@@ -17,9 +17,9 @@ class CoverageGateSpec extends Specification {
 
     static final Path EXEC_FILE = Path.of(System.getProperty("gate.exec", "build/jacoco/test.exec"))
     static final Path CLASSES_DIR = Path.of(System.getProperty("gate.classes", "build/classes/java/main"))
-    static final String SBOM = "org.reachability.analyzer.sbom"
-    static final String OSV = "org.reachability.analyzer.osv"
-    static final String UNREACHABLE_CLASS = "org.reachability.analyzer.osv.SnapshotChecksum"
+    static final String SBOM = "org.crazyrock.callis.sbom"
+    static final String OSV = "org.crazyrock.callis.osv"
+    static final String UNREACHABLE_CLASS = "org.crazyrock.callis.osv.SnapshotChecksum"
 
     static ExecutionDataStore realStore() {
         CoverageGate.loadExecutionData(EXEC_FILE)
@@ -141,13 +141,13 @@ class CoverageGateSpec extends Specification {
 
         expect:
         CoverageGate.evaluate(store, classDirs(), [gate]).exitCode ==
-                CoverageGate.evaluate(store, classDirs(), ["org.reachability.analyzer.doesnotexist"], [gate]).exitCode
+                CoverageGate.evaluate(store, classDirs(), ["org.crazyrock.callis.doesnotexist"], [gate]).exitCode
     }
 
     def "given a package without main classes when gated then it is skipped and passes"() {
         given:
         def store = realStore()
-        def gate = new Gate("org.reachability.analyzer.doesnotexist", "LINE", 1.0)
+        def gate = new Gate("org.crazyrock.callis.doesnotexist", "LINE", 1.0)
 
         when:
         def result = CoverageGate.evaluate(store, classDirs(), [gate])

@@ -15,13 +15,13 @@
 #           (after JAVA_HOME=<GraalVM 25> ./gradlew :cli:nativeCompile)
 FROM gcr.io/distroless/base:latest
 
-COPY cli /usr/local/bin/reachability-analyzer
+COPY cli /usr/local/bin/callis-java
 
 # Reports from --output=<base> and relative input paths resolve against
 # the workdir; consumers mount their project here.
 WORKDIR /work
 
-ENTRYPOINT ["/usr/local/bin/reachability-analyzer"]
+ENTRYPOINT ["/usr/local/bin/callis-java"]
 # A bare `docker run <image>` prints usage instead of failing on the
 # missing required options; the first user-supplied argument replaces it.
 CMD ["--help"]

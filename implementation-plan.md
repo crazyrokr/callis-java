@@ -126,7 +126,7 @@ dependency-vulnerability-analyzer/
             └── mini-app/                 # compiled stub "library" + caller classes
 ```
 
-Package root `org.reachability.analyzer` is a placeholder — rename in M0 if a
+Package root `org.crazyrock.callis` is a placeholder — rename in M0 if a
 corporate groupId is preferred.
 
 ---

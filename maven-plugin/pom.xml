@@ -10,12 +10,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>org.reachability</groupId>
-  <artifactId>reachability-maven-plugin</artifactId>
+  <groupId>org.crazyrock.callis</groupId>
+  <artifactId>callis-maven-plugin</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <packaging>maven-plugin</packaging>
 
-  <name>Reachability Maven Plugin</name>
+  <name>Callis Maven Plugin</name>
   <description>
     Fails the Maven build when a vulnerability from the project's SBOM is
     reachable from the project's main classes (reachability:check, A10).
@@ -29,7 +29,7 @@
   <dependencies>
     <!-- The engine (M7a A10 facade): published by :core:publishToMavenLocal. -->
     <dependency>
-      <groupId>org.reachability</groupId>
+      <groupId>org.crazyrock.callis</groupId>
       <artifactId>core</artifactId>
       <version>0.1.0-SNAPSHOT</version>
     </dependency>

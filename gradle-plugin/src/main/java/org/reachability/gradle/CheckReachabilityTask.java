@@ -24,7 +24,7 @@ import org.gradle.api.tasks.TaskAction;
 import org.gradle.workers.WorkQueue;
 import org.gradle.workers.WorkerExecutor;
 import org.gradle.workers.WorkerExecutionException;
-import org.reachability.analyzer.engine.ReportFormat;
+import org.crazyrock.callis.engine.ReportFormat;
 
 import java.io.File;
 import java.io.IOException;
