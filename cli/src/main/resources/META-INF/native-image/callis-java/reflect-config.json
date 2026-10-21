@@ -1,0 +1,10 @@
+[
+  {
+    "name": "org.crazyrock.callis.ReachabilityAnalyzerCli",
+    "allDeclaredFields": true,
+    "annotationTypes": [
+      "picocli.CommandLine",
+      "picocli.CommandLine$Option"
+    ]
+  }
+]

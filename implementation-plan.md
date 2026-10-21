@@ -1,4 +1,4 @@
-# Implementation Plan — Dependency Vulnerability Reachability Analyzer
+# Implementation Plan — Callis Java
 
 > Companion to `plan.md` (feature spec). This document is the execution-ready plan:
 > verified stack, repo layout, task-level workstreams, test strategy, and acceptance
@@ -71,7 +71,7 @@ exit 3 when a non-empty directory parses to nothing (A12/R8).
 ## 3. Repository Layout
 
 ```
-dependency-vulnerability-analyzer/
+callis-java/
 ├── settings.gradle.kts
 ├── build.gradle.kts
 ├── gradle/libs.versions.toml
@@ -93,7 +93,7 @@ dependency-vulnerability-analyzer/
 │       ├── pom.xml
 │       └── src/main/java/...
 └── src/
-    ├── main/java/org/reachability/analyzer/
+    ├── main/java/org/crazyrock/callis/
     │   ├── ReachabilityAnalyzerCli.java   # picocli @Command (M1)
     │   ├── sbom/                          # M1
     │   │   ├── CycloneDxParser.java
@@ -118,7 +118,7 @@ dependency-vulnerability-analyzer/
     │       ├── JsonReportWriter.java
     │       └── JUnitXmlReportWriter.java  # 1 <testcase> per vulnerability
     └── test/
-        ├── groovy/org/reachability/analyzer/...   # Spock specs, mirror main 1:1
+        ├── groovy/org/crazyrock/callis/...   # Spock specs, mirror main 1:1
         └── resources/fixtures/
             ├── osv/                      # real records from all.zip (see §6)
             ├── bom.json
@@ -126,7 +126,7 @@ dependency-vulnerability-analyzer/
             └── mini-app/                 # compiled stub "library" + caller classes
 ```
 
-Package root `org.reachability.analyzer` is a placeholder — rename in M0 if a
+Package root `org.crazyrock.callis` is a placeholder — rename in M0 if a
 corporate groupId is preferred.
 
 ---
@@ -406,7 +406,7 @@ scoping M7 cache/parallelism work).
      `target/cp.txt` (documented in the template)
   4. run analyzer (jar built via `./gradlew shadowJar` in the analyzer repo,
      published to the corporate repo, or checked out + built in the workflow):
-     `java -jar reachability-analyzer.jar --app-classes=target/classes \
+     `java -jar callis-java.jar --app-classes=target/classes \
         --classpath-file=target/cp.txt --sbom=target/bom.json \
         --osv-dir=osv-maven --mappings=... (optional) \
         --format=json,junitxml --output=reachability-report`
@@ -486,7 +486,7 @@ the fixed version makes it pass. Jenkinsfile reviewed for syntax (lint).
 
 ## 7. Deliverables Checklist
 
-- [ ] `reachability-analyzer-<v>.jar` (Shadow Fat-JAR, Main-Class set)
+- [ ] `callis-java-<v>.jar` (Shadow Fat-JAR, Main-Class set)
 - [ ] Gradle wrapper + `gradle/libs.versions.toml` committed
 - [ ] `docs/adr/` (0001 index + 0002–0017 per-decision ADRs A1–A16 + 0018/0019 ops)
 - [ ] `scripts/download-osv.sh`

@@ -14,11 +14,11 @@ plugins {
     `maven-publish`
 }
 
-group = "org.reachability"
+group = "org.crazyrock.callis"
 version = "0.1.0-SNAPSHOT"
 
 // M7e (A10): publish core to the local Maven repository so the standalone
-// maven-plugin build (maven-plugin/pom.xml) can depend on org.reachability:core.
+// maven-plugin build (maven-plugin/pom.xml) can depend on org.crazyrock.callis:core.
 val coreJavaComponent = components.getByName("java")
 
 publishing {
@@ -226,16 +226,16 @@ val coverageGate = tasks.register<JavaExec>("coverageGate") {
     // SnapshotChecksum's NoSuchAlgorithmException catch is unreachable (SHA-256 is
     // a mandated JCA algorithm), so the class is kept out of the gate's denominator.
     // Its algorithm is pinned by SnapshotChecksumSpec instead.
-    gateArgs.add("--exclude"); gateArgs.add("org.reachability.analyzer.osv.SnapshotChecksum")
+    gateArgs.add("--exclude"); gateArgs.add("org.crazyrock.callis.osv.SnapshotChecksum")
     for (dir in sourceSets.main.get().output.classesDirs) {
         gateArgs.add("--classes")
         gateArgs.add(dir.absolutePath)
     }
-    gateArgs.add("--gate"); gateArgs.add("org.reachability.analyzer.sbom:LINE:1.0")
-    gateArgs.add("--gate"); gateArgs.add("org.reachability.analyzer.osv:LINE:1.0")
-    gateArgs.add("--gate"); gateArgs.add("org.reachability.analyzer.osv:BRANCH:0.90")
-    gateArgs.add("--gate"); gateArgs.add("org.reachability.analyzer.report:LINE:1.0")
-    gateArgs.add("--gate"); gateArgs.add("org.reachability.analyzer.analysis:BRANCH:0.90")
+    gateArgs.add("--gate"); gateArgs.add("org.crazyrock.callis.sbom:LINE:1.0")
+    gateArgs.add("--gate"); gateArgs.add("org.crazyrock.callis.osv:LINE:1.0")
+    gateArgs.add("--gate"); gateArgs.add("org.crazyrock.callis.osv:BRANCH:0.90")
+    gateArgs.add("--gate"); gateArgs.add("org.crazyrock.callis.report:LINE:1.0")
+    gateArgs.add("--gate"); gateArgs.add("org.crazyrock.callis.analysis:BRANCH:0.90")
     args(*gateArgs.toTypedArray())
 }
 

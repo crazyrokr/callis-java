@@ -7,7 +7,7 @@ plugins {
     checkstyle
 }
 
-group = "org.reachability"
+group = "org.crazyrock.callis"
 version = "0.1.0-SNAPSHOT"
 
 java {

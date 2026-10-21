@@ -15,7 +15,7 @@ plugins {
     jacoco
 }
 
-group = "org.reachability"
+group = "org.crazyrock.callis"
 version = "0.1.0-SNAPSHOT"
 
 java {
@@ -97,7 +97,7 @@ jacoco {
 }
 
 application {
-    mainClass = "org.reachability.analyzer.ReachabilityAnalyzerCli"
+    mainClass = "org.crazyrock.callis.ReachabilityAnalyzerCli"
 }
 
 // M7d (A2): the native-image target. The main class comes from the
@@ -105,7 +105,7 @@ application {
 // JAVA_HOME=<graalvm 25> ./gradlew :cli:nativeImage — while `check` stays
 // under plain Temurin and never builds the binary. Any missing-metadata
 // config found by running the binary (M7d) goes into
-// src/main/resources/META-INF/native-image/reachability-analyzer/.
+// src/main/resources/META-INF/native-image/callis-java/.
 graalvmNative {
     // Build the binary from the project's main class and runtime classpath.
 }
@@ -120,13 +120,13 @@ tasks.withType<BuildNativeImageTask> {
 tasks.shadowJar {
     // The Fat-JAR name is part of the public contract (workflows, Jenkinsfile,
     // README) — pin it to the pre-split name now that the project is :cli.
-    archiveBaseName = "reachability-analyzer"
+    archiveBaseName = "callis-java"
     archiveClassifier = "all"
     // mergeServiceFiles() only runs on a duplicate if it survives the copy spec;
     // the shadow default is EXCLUDE, which silently drops the other service entries.
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
     manifest {
-        attributes["Main-Class"] = "org.reachability.analyzer.ReachabilityAnalyzerCli"
+        attributes["Main-Class"] = "org.crazyrock.callis.ReachabilityAnalyzerCli"
     }
     mergeServiceFiles()
     exclude("module-info.class")

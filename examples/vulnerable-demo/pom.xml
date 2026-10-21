@@ -11,7 +11,7 @@
 
   <name>vulnerable-demo</name>
   <description>
-    Living integration test for the reachability analyzer (T65). Deliberately
+    Living integration test for Callis Java (T65). Deliberately
     Maven while the analyzer itself is Gradle: it proves cross-build-system
     analysis end-to-end (SBOM + classpath in, verdicts out).
 

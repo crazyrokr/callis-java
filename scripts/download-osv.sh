@@ -19,7 +19,7 @@ DEST="${DEST%/}"
 PIN="${DEST}.sha256"
 
 snapshot_sha256() {
-    # Mirrors org.reachability.analyzer.osv.SnapshotChecksum (same order,
+    # Mirrors org.crazyrock.callis.osv.SnapshotChecksum (same order,
     # same encoding). Empty input hashes as the sha256 of empty data. The
     # whole computation runs in one subshell so every sha256sum resolves
     # against DEST, not the caller's working directory.

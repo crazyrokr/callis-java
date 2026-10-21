@@ -20,7 +20,7 @@ neither jackson-databind 2.22.3 nor picocli 4.7.7 ships native-image
 metadata in this timeline, and the GraalVM reachability-metadata repository
 (1.0.15, used by the plugin) has no picocli entry — without a config the
 binary only saw the built-in `-h`/`-V` options. One
-`cli/src/main/resources/META-INF/native-image/reachability-analyzer/
+`cli/src/main/resources/META-INF/native-image/callis-java/
 reflect-config.json` (the CLI class: `allDeclaredFields` + the two picocli
 annotation types) fixed it; SootUp/ASM/Jackson needed none — Jackson only
 uses the generic JsonNode tree model (no POJO binding) and SootUp loads

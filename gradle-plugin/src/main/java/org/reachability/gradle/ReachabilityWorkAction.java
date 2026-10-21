@@ -10,12 +10,12 @@ import org.gradle.workers.WorkAction;
 import org.gradle.workers.WorkParameters;
 import org.gradle.workers.internal.DefaultWorkResult;
 import org.gradle.workers.internal.ProvidesWorkResult;
-import org.reachability.analyzer.engine.AnalysisRequest;
-import org.reachability.analyzer.engine.AnalyzerEngine;
-import org.reachability.analyzer.engine.CallGraphPolicy;
-import org.reachability.analyzer.engine.CallbackInterfaceSpecs;
-import org.reachability.analyzer.engine.DiagnosticSink;
-import org.reachability.analyzer.engine.ReportFormat;
+import org.crazyrock.callis.engine.AnalysisRequest;
+import org.crazyrock.callis.engine.AnalyzerEngine;
+import org.crazyrock.callis.engine.CallGraphPolicy;
+import org.crazyrock.callis.engine.CallbackInterfaceSpecs;
+import org.crazyrock.callis.engine.DiagnosticSink;
+import org.crazyrock.callis.engine.ReportFormat;
 
 import java.lang.management.ManagementFactory;
 import java.nio.file.Path;

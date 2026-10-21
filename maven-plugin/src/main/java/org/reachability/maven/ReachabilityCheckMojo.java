@@ -8,12 +8,12 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
-import org.reachability.analyzer.engine.AnalysisRequest;
-import org.reachability.analyzer.engine.AnalyzerEngine;
-import org.reachability.analyzer.engine.CallGraphPolicy;
-import org.reachability.analyzer.engine.CallbackInterfaceSpecs;
-import org.reachability.analyzer.engine.DiagnosticSink;
-import org.reachability.analyzer.engine.ReportFormat;
+import org.crazyrock.callis.engine.AnalysisRequest;
+import org.crazyrock.callis.engine.AnalyzerEngine;
+import org.crazyrock.callis.engine.CallGraphPolicy;
+import org.crazyrock.callis.engine.CallbackInterfaceSpecs;
+import org.crazyrock.callis.engine.DiagnosticSink;
+import org.crazyrock.callis.engine.ReportFormat;
 
 import java.io.File;
 import java.io.IOException;
@@ -34,7 +34,7 @@ import java.util.Optional;
  *
  * <p>Typical invocation (after the project's CycloneDX plugin wrote the
  * SBOM at package time):
- * {@code mvn org.reachability:reachability-maven-plugin:0.1.0-SNAPSHOT:check
+ * {@code mvn org.crazyrock.callis:callis-maven-plugin:0.1.0-SNAPSHOT:check
  * -Dreachability.sbomFile=target/bom.json -Dreachability.osvDir=osv-maven}.
  *
  * <p>Fields are package-private so the plain JUnit 5 tests can drive the goal

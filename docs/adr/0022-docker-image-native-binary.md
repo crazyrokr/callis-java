@@ -6,7 +6,7 @@
 ## Decision
 
 The M7d native binary ships as a container image, `ghcr.io/<owner>/
-reachability-analyzer`, so consumers can `docker pull` instead of building
+callis-java`, so consumers can `docker pull` instead of building
 under GraalVM.
 
 - **Base: `FROM gcr.io/distroless/base`.** The current
@@ -27,7 +27,7 @@ under GraalVM.
   against `/work`, i.e. the first mount.
 - **Build context: the binary's directory only**
   (`cli/build/native/nativeCompile`, in CI the `nativeCompile/` content
-  of the `reachability-analyzer-native` artifact) — only the 21.5 MB
+  of the `callis-java-native` artifact) — only the 21.5 MB
   binary reaches the builder. `docker/Dockerfile` is outside the context
   (buildx `-f`).
 - **CI (build-analyzer.yml, new `docker` job):** `needs: native`,

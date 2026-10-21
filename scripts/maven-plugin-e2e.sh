@@ -15,7 +15,7 @@ step "publish core to the local Maven repository"
 # and ReachabilityCheckMojoTest compiles its fixture app against that exact file.
 ./gradlew -q :core:publishToMavenLocal :core:stublibJar || { echo "FAILED: :core:publishToMavenLocal"; fail=1; }
 
-step "install reachability-maven-plugin"
+step "install callis-maven-plugin"
 ./mvnw -q -f maven-plugin/pom.xml install || { echo "FAILED: plugin install"; fail=1; }
 
 run_demo() {
@@ -31,7 +31,7 @@ run_demo() {
     # so the -f invocation from the repo root needs absolute paths.
     local actual=0
     ./mvnw -B -f examples/vulnerable-demo/pom.xml \
-        org.reachability:reachability-maven-plugin:0.1.0-SNAPSHOT:check \
+        org.crazyrock.callis:callis-maven-plugin:0.1.0-SNAPSHOT:check \
         -Dreachability.sbomFile="$(pwd)/$bom" -Dreachability.osvDir="$(pwd)/osv-maven" > "$log" 2>&1 \
         || actual=1
     grep -E "CRITICAL|NOTICE|candidate|reachable|reachability-report" "$log" | head -15

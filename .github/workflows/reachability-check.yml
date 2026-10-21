@@ -124,7 +124,7 @@ jobs:
           # JEP 519 (JDK 25, off by default): compact object headers trim
           # the heap on object-heavy targets. The Fat-JAR needs JDK 25
           # anyway (A12), so the flag is always valid here.
-          java -XX:+UseCompactObjectHeaders -jar cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
+          java -XX:+UseCompactObjectHeaders -jar cli/build/libs/callis-java-0.1.0-SNAPSHOT-all.jar \
             --app-classes=examples/vulnerable-demo/target/classes \
             --classpath-file=examples/vulnerable-demo/target/cp.txt \
             --sbom=examples/vulnerable-demo/target/bom.json \

@@ -33,7 +33,7 @@ public class ReachabilityPlugin implements Plugin<Project> {
         // and is applied by both the java and the java-library plugin.
         if (!project.getPluginManager().hasPlugin("java")) {
             throw new IllegalStateException("the reachability plugin requires the java plugin "
-                    + "(apply 'java' before 'org.reachability')");
+                    + "(apply 'java' before 'org.crazyrock.callis')");
         }
 
         ReachabilityExtension extension =

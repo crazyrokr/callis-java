@@ -1,0 +1,91 @@
+// Renovate (https://docs.renovatebot.com) — automatic dependency-update PRs
+// for this repository.
+//
+// No preset is extended: Renovate 44's config:base no longer exists, and
+// config:recommended pulls in opinionated extras (dependency dashboard,
+// forced action replacements, extra grouping) this repo does not want.
+// The bare defaults stay conservative — no automerge, PR-based updates,
+// rebase when the base branch moves — so every update lands as a
+// reviewable PR gated by ./gradlew check in CI.
+//
+// Scope (the managers enabled by default):
+//   * gradle        — gradle/libs.versions.toml (the single source of truth:
+//                     Renovate edits the [versions] pins in place, so one
+//                     PR per pin), every module's build script,
+//                     settings.gradle.kts
+//   * gradleWrapper — gradle/wrapper/gradle-wrapper.properties
+//   * maven         — maven-plugin/pom.xml, .mvn/wrapper/maven-wrapper.properties
+//   * github-actions — .github/workflows/*.yml
+//
+// Excluded on purpose:
+//   * examples/vulnerable-demo — the log4j 2.14.1 pin is a deliberately
+//     VULNERABLE release (T65, the fail-by-design workflow): an "update"
+//     would silently flip the red integration test green, so the whole
+//     directory is out of scope.
+//   * osv-maven — the OSV snapshot scripts/download-osv.sh downloads;
+//     pinned via osv-maven.sha256 (A14), not a dependency.
+//
+// Non-dependencies that still look like coordinates (disabled per-package,
+// see packageRules): the coverage-gate specs in core/build.gradle.kts
+// ("<pkg>:LINE|BRANCH:<min>") match the group:artifact:version shape, and
+// org.crazyrock.callis:core is maven-plugin's dependency on this repo's own
+// module — neither exists in any remote repository.
+//
+// Maven Central answers bursts of maven-metadata.xml queries with HTTP 429,
+// so its lookups are fully serialized and capped at 2 requests/second
+// (hostRules below).
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "ignorePaths": [
+    "examples/vulnerable-demo",
+    "osv-maven"
+  ],
+
+  "packageRules": [
+    {
+      "matchDatasources": ["maven"],
+      "registryUrls": [
+        "https://maven-central.storage-download.googleapis.com/maven2/"
+      ]
+    },
+    // maven-plugin/pom.xml is pure build tooling (Maven APIs + compiler +
+    // test deps): one combined PR instead of one per package.
+    {
+      "matchFileNames": ["maven-plugin/**"],
+      "groupName": "maven plugin toolchain"
+    },
+    // Not dependencies: the coverage-gate specs (core/build.gradle.kts) and
+    // the repo's own core module. Every lookup for them would 404 (or 429
+    // under rate limiting) and they can never produce a PR. Both name forms
+    // (bare artifact and full group:artifact) are listed so the match does
+    // not depend on how the manager splits the coordinates.
+    {
+      "matchPackageNames": [
+        "LINE",
+        "BRANCH",
+        "org.crazyrock.callis.sbom:LINE",
+        "org.crazyrock.callis.osv:LINE",
+        "org.crazyrock.callis.osv:BRANCH",
+        "org.crazyrock.callis.report:LINE",
+        "org.crazyrock.callis.analysis:BRANCH",
+        "core",
+        "org.crazyrock.callis:core"
+      ],
+      "enabled": false
+    }
+  ],
+
+  // Keep Maven Central lookups under its rate limit (HTTP 429s): at most
+  // one request in flight, no more than 2/second (a 500ms gap). A run's
+  // ~15 metadata lookups then take ~8s instead of bursting.
+  "hostRules": [
+    {
+      "matchHost": "repo.maven.apache.org",
+      "concurrentRequestLimit": 1,
+      "maxRequestsPerSecond": 2
+    }
+  ],
+}

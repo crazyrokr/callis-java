@@ -1,4 +1,4 @@
-rootProject.name = "reachability-analyzer"
+rootProject.name = "callis-java"
 
 pluginManagement {
     repositories {
