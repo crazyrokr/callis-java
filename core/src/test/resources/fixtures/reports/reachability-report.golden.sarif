@@ -4,7 +4,7 @@
   "runs" : [ {
     "tool" : {
       "driver" : {
-        "name" : "reachability-analyzer",
+        "name" : "callis-java",
         "version" : "0.1.0-SNAPSHOT",
         "rules" : [ {
           "id" : "VULN-POS",

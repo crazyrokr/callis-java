@@ -71,7 +71,7 @@ class SarifReportWriterSpec extends Specification {
         and: "one run, one driver named after the tool with its version"
         node.get("runs").size() == 1
         def run = node.get("runs").get(0)
-        run.get("tool").get("driver").get("name").asText() == "reachability-analyzer"
+        run.get("tool").get("driver").get("name").asText() == "callis-java"
         run.get("tool").get("driver").get("version").asText() == report.metadata().toolVersion()
 
         and: "one rule per candidate, in entry order, with the OSV summary as fullDescription"

@@ -28,7 +28,7 @@
 // Non-dependencies that still look like coordinates (disabled per-package,
 // see packageRules): the coverage-gate specs in core/build.gradle.kts
 // ("<pkg>:LINE|BRANCH:<min>") match the group:artifact:version shape, and
-// org.reachability:core is maven-plugin's dependency on this repo's own
+// org.crazyrock.callis:core is maven-plugin's dependency on this repo's own
 // module — neither exists in any remote repository.
 //
 // Maven Central answers bursts of maven-metadata.xml queries with HTTP 429,

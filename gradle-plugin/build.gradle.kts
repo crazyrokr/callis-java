@@ -8,7 +8,7 @@ plugins {
     jacoco
 }
 
-group = "org.reachability"
+group = "org.crazyrock.callis"
 version = "0.1.0-SNAPSHOT"
 
 java {
@@ -34,9 +34,9 @@ dependencies {
 gradlePlugin {
     plugins {
         create("reachability") {
-            id = "org.reachability"
+            id = "org.crazyrock.callis"
             implementationClass = "org.reachability.gradle.ReachabilityPlugin"
-            displayName = "Dependency Vulnerability Reachability"
+            displayName = "Callis Java"
             description = "Fails the build when a vulnerability from the project's SBOM is reachable from the main source set."
         }
     }

@@ -34,7 +34,7 @@ import java.util.Optional;
  *
  * <p>Typical invocation (after the project's CycloneDX plugin wrote the
  * SBOM at package time):
- * {@code mvn org.reachability:reachability-maven-plugin:0.1.0-SNAPSHOT:check
+ * {@code mvn org.crazyrock.callis:callis-maven-plugin:0.1.0-SNAPSHOT:check
  * -Dreachability.sbomFile=target/bom.json -Dreachability.osvDir=osv-maven}.
  *
  * <p>Fields are package-private so the plain JUnit 5 tests can drive the goal

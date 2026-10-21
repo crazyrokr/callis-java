@@ -1,4 +1,4 @@
-# reachability-analyzer
+# Callis Java
 
 Answers one question in CI: **is this vulnerability in the SBOM actually
 reachable from application code?**
@@ -23,7 +23,7 @@ in a forked worker process).
 Multi-module Gradle build: `core` holds the whole analysis pipeline (SBOM/OSV
 parsing, SootUp call graph, verdicts, reports) plus the `AnalyzerEngine`
 facade every front end calls in-process; `cli` is the picocli front-end +
-Shadow fat JAR (`cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar`);
+Shadow fat JAR (`cli/build/libs/callis-java-0.1.0-SNAPSHOT-all.jar`);
 `gradle-plugin` is the Gradle front end (M7e, `checkReachability` task);
 `maven-plugin/` is the Maven front end (M7e, `reachability:check` goal) — a
 separate Maven build inside the Gradle repo (recorded deviation, A10);
@@ -69,7 +69,7 @@ cd ../..
 # 4. Analyze
 #    -XX:+UseCompactObjectHeaders (JEP 519, JDK 25, off by default) trims
 #    the heap on object-heavy targets; the Fat-JAR needs JDK 25 anyway (A12).
-java -XX:+UseCompactObjectHeaders -jar cli/build/libs/reachability-analyzer-0.1.0-SNAPSHOT-all.jar \
+java -XX:+UseCompactObjectHeaders -jar cli/build/libs/callis-java-0.1.0-SNAPSHOT-all.jar \
   --app-classes=examples/vulnerable-demo/target/classes \
   --classpath-file=examples/vulnerable-demo/target/cp.txt \
   --sbom=examples/vulnerable-demo/target/bom.json \
@@ -187,7 +187,7 @@ it ships in a `distroless/base` image — no shell, no package manager,
 push to `main` and publishes it to GitHub Packages:
 
 ```bash
-docker pull ghcr.io/crazyrokr/reachability-analyzer:latest   # or :<commit-sha>
+docker pull ghcr.io/crazyrokr/callis-java:latest   # or :<commit-sha>
 ```
 
 The image is the same CLI: `WORKDIR /work`, the `ENTRYPOINT` is the
@@ -204,7 +204,7 @@ docker run --rm \
   -v "$(pwd)/examples/vulnerable-demo:/work" \
   -v "$(pwd)/osv-maven:/osv:ro" \
   -v "$HOME/.m2:$HOME/.m2:ro" \
-  ghcr.io/crazyrokr/reachability-analyzer \
+  ghcr.io/crazyrokr/callis-java \
   --app-classes=/work/target/classes \
   --classpath-file=/work/target/cp.txt \
   --sbom=/work/target/bom.json \
@@ -220,12 +220,12 @@ multi-arch would need a per-arch native build).
 
 The same engine runs in-process from both build systems.
 
-**Gradle** (`gradle-plugin`, plugin id `org.reachability`):
+**Gradle** (`gradle-plugin`, plugin id `org.crazyrock.callis`):
 
 ```kotlin
 plugins {
     id("java")
-    id("org.reachability")
+    id("org.crazyrock.callis")
 }
 
 reachability {
@@ -256,7 +256,7 @@ are attributable to the worker.
 
 ```bash
 # after the project's CycloneDX plugin wrote target/bom.json at package time
-mvn org.reachability:reachability-maven-plugin:0.1.0-SNAPSHOT:check \
+mvn org.crazyrock.callis:callis-maven-plugin:0.1.0-SNAPSHOT:check \
     -Dreachability.sbomFile=target/bom.json -Dreachability.osvDir=../osv-maven
 ```
 

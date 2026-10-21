@@ -48,7 +48,7 @@ public final class SarifReportWriter {
         root.put("version", "2.1.0");
 
         ObjectNode driver = MAPPER.createObjectNode();
-        driver.put("name", "reachability-analyzer");
+        driver.put("name", "callis-java");
         driver.put("version", report.metadata().toolVersion());
         driver.set("rules", rulesNode(report.vulnerabilities()));
         ObjectNode tool = MAPPER.createObjectNode();

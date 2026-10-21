@@ -89,7 +89,7 @@ entry.
   a content hash of the binary's inputs**: `git archive` of
   `core/src/main` + `cli/src/main` + `gradle/` (catalog) + the build
   scripts + `gradle.properties`, sha256'd, keys a cache entry holding
-  the built binary (`reachability-analyzer-native-<hash>-graalvm-<ver>`).
+  the built binary (`callis-java-native-<hash>-graalvm-<ver>`).
   On a hit the previous binary is restored and the ~2 min
   `nativeCompile` is skipped; the (restored) binary is still uploaded as
   the run's artifact, so the `docker` job publishes the `:<sha>`/`latest`

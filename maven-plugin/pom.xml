@@ -2,7 +2,7 @@
 <!--
   M7e (A10): the Maven plugin front end. A separate Maven build inside the
   Gradle repo (recorded deviation in ADR 0011): maven-plugin packaging requires
-  a Maven build. Depends on org.reachability:core published to the local
+  a Maven build. Depends on org.crazyrock.callis:core published to the local
   repository by `./gradlew :core:publishToMavenLocal`.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"

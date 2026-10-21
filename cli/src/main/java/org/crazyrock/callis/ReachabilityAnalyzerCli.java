@@ -42,8 +42,8 @@ import java.util.concurrent.Callable;
  * modes debug each stage in isolation.
  */
 @Command(
-        name = "reachability-analyzer",
-        version = "reachability-analyzer 0.1.0-SNAPSHOT",
+        name = "callis-java",
+        version = "callis-java 0.1.0-SNAPSHOT",
         mixinStandardHelpOptions = true,
         description = "Determines whether vulnerabilities listed in a CycloneDX SBOM are "
                 + "reachable from application code, using a SootUp call graph."

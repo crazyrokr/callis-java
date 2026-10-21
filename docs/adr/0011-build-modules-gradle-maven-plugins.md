@@ -27,7 +27,7 @@ root `mvnw` 3.9.16 wrapper is committed): the `reachability:check` Mojo
 project's built classes and `getRuntimeClasspathElements()`, failing with
 `MojoExecutionException` on exit 1/2/3. `:core` gained `maven-publish`
 (local repository) so the Maven build depends on
-`org.reachability:core:0.1.0-SNAPSHOT`. Two recorded plan simplifications:
+`org.crazyrock.callis:core:0.1.0-SNAPSHOT`. Two recorded plan simplifications:
 the "auto-detect the CycloneDX plugin's output" idea was dropped — `bomFile`
 is an explicit input (the user points it at their `bom.json`), keeping the
 plugins build-tool-agnostic — and the maven-plugin's unit tests use plain
@@ -124,7 +124,7 @@ the reflection pin in `ReachabilityPluginSpec` holds it.
 - **2026-10-09 (M7e):** Gradle + Maven plugin front ends (A10 amended in
   place).
   * `gradle-plugin/` module (java-library + groovy + java-gradle-plugin,
-    `api(project(":core"))`, plugin id `org.reachability`):
+    `api(project(":core"))`, plugin id `org.crazyrock.callis`):
     `ReachabilityPlugin` requires the java plugin (clear
     `IllegalStateException` — Gradle 9.8 removed
     `PluginManager.hasPlugin(Class)`, so the check uses the plugin id
@@ -155,7 +155,7 @@ the reflection pin in `ReachabilityPluginSpec` holds it.
     "unreadable jar" warning), `sbomFile`/`osvDir` parameters with clear
     `MojoExecutionException`s when absent, reports to
     `target/reachability-report.*`, exit 1/2/3 ⇒ `MojoExecutionException`.
-    `:core` publishes `org.reachability:core:0.1.0-SNAPSHOT` to the local
+    `:core` publishes `org.crazyrock.callis:core:0.1.0-SNAPSHOT` to the local
     repository (`maven-publish`) and the plugin pom depends on it.
   * Maven 3.9.16 API drift hit while testing (recorded here, not in a
     separate ADR): the `org.apache.maven.plugins.annotations` package is a

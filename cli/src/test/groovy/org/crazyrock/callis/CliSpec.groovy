@@ -47,7 +47,7 @@ class CliSpec extends Specification {
 
         then:
         exitCode == 0
-        capturedOut.toString().contains("Usage:")
+        capturedOut.toString().contains("Usage: callis-java")
         capturedOut.toString().contains("--sbom")
     }
 
@@ -57,7 +57,7 @@ class CliSpec extends Specification {
 
         then:
         exitCode == 0
-        capturedOut.toString().contains("0.1.0-SNAPSHOT")
+        capturedOut.toString().contains("callis-java 0.1.0-SNAPSHOT")
     }
 
     def "given no arguments when executed then missing-option error and exit usage error"() {

@@ -294,7 +294,7 @@ class AnalyzerEngineSpec extends Specification {
         def sarif = mapper.readTree(work.resolve("reachability-report.sarif").toFile())
         sarif.get("version").asText() == "2.1.0"
         def run = sarif.get("runs").get(0)
-        run.get("tool").get("driver").get("name").asText() == "reachability-analyzer"
+        run.get("tool").get("driver").get("name").asText() == "callis-java"
         run.get("tool").get("driver").get("rules").size() == 1
         def results = run.get("results")
         results.size() == 1

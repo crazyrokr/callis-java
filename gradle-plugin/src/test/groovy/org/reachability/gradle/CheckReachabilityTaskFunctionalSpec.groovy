@@ -36,7 +36,7 @@ class CheckReachabilityTaskFunctionalSpec extends Specification {
     private void writeFixtureProject(String osvDir, boolean cha) {
         Files.writeString(projectDir.resolve("settings.gradle"), "rootProject.name = 'fixture-app'\n")
         Files.writeString(projectDir.resolve("build.gradle"),
-                "plugins {\n    id 'java'\n    id 'org.reachability'\n}\n" +
+                "plugins {\n    id 'java'\n    id 'org.crazyrock.callis'\n}\n" +
                         "dependencies {\n    implementation files('" + new File(STUBLIB_JAR).absolutePath + "')\n}\n" +
                         "reachability {\n" +
                         "    bomFile = '" + new File(BOM_MINI).absolutePath + "'\n" +
@@ -108,7 +108,7 @@ class CheckReachabilityTaskFunctionalSpec extends Specification {
         given:
         Files.writeString(projectDir.resolve("settings.gradle"), "rootProject.name = 'fixture-app'\n")
         Files.writeString(projectDir.resolve("build.gradle"),
-                "plugins {\n    id 'java'\n    id 'org.reachability'\n}\n" +
+                "plugins {\n    id 'java'\n    id 'org.crazyrock.callis'\n}\n" +
                         "dependencies {\n    implementation files('" + new File(STUBLIB_JAR).absolutePath + "')\n}\n" +
                         "reachability {\n" +
                         "    osvDir = '" + new File(OSV_MINI).absolutePath + "'\n}\n")
@@ -141,7 +141,7 @@ class CheckReachabilityTaskFunctionalSpec extends Specification {
         }
         Files.writeString(projectDir.resolve("settings.gradle"), "rootProject.name = 'fixture-app'\n")
         Files.writeString(projectDir.resolve("build.gradle"),
-                "plugins {\n    id 'java'\n    id 'org.reachability'\n}\n" +
+                "plugins {\n    id 'java'\n    id 'org.crazyrock.callis'\n}\n" +
                         "dependencies {\n    implementation files('" + new File(STUBLIB_JAR).absolutePath + "')\n}\n" +
                         "reachability {\n" +
                         "    bomFile = '" + bomFile + "'\n" +

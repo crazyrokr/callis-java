@@ -13,7 +13,7 @@ import spock.lang.Specification
 class NativeImageConfigSpec extends Specification {
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
-    private static final String RESOURCE = "/META-INF/native-image/reachability-analyzer/reflect-config.json"
+    private static final String RESOURCE = "/META-INF/native-image/callis-java/reflect-config.json"
 
     def "given the reflect-config resource when resolved from the main classpath then it is at the native-image auto-discovery location"() {
         expect:
