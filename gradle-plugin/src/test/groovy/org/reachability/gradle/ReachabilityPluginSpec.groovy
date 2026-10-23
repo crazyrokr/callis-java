@@ -1,60 +1,66 @@
 package org.reachability.gradle
 
-import org.gradle.api.Project
-import org.gradle.api.plugins.JavaPlugin
-import org.gradle.api.provider.Provider
-import org.gradle.testfixtures.ProjectBuilder
+import org.gradle.testkit.runner.BuildResult
 import spock.lang.Specification
+import spock.lang.TempDir
+
+import java.nio.file.Path
 
 /**
  * M7e (A10): plugin wiring — the reachability extension and the
  * checkReachability task exist on a java project with the documented
  * defaults, the task is wired to the main source set's output and the
- * project's runtime classpath, and a project without the java plugin
- * gets an explicit error.
+ * project's runtime classpath, a project without the java plugin gets an
+ * explicit error, the maxHeapSize convention reaches the task, extension
+ * values reach the task inputs, the task carries the cacheable
+ * content-sensitive input pins, and the work action carries the 9.8 worker
+ * parameter contract.
+ *
+ * The project-level assertions run against TestKit fixture builds (see
+ * FixtureProject for why ProjectBuilder is off the table under Groovy 6);
+ * each fixture dumps its live extension/task values to a file, so the
+ * assertions check exactly the values the original in-project assertions
+ * checked. The task and work-action pins are pure reflection and need no
+ * project at all.
  */
 class ReachabilityPluginSpec extends Specification {
 
+    @TempDir
+    Path projectDir
+
     def "given a project with the java plugin when the reachability plugin is applied then the extension and task exist with defaults"() {
         given:
-        Project project = ProjectBuilder.builder().build()
-        project.plugins.apply(JavaPlugin)
+        FixtureProject fixture = FixtureProject.withJavaPlugin(projectDir, "")
 
         when:
-        project.plugins.apply(ReachabilityPlugin)
+        Map<String, String> dump = fixture.wiringDump()
 
-        then:
-        project.extensions.findByName("reachability") != null
-        project.tasks.findByName("checkReachability") != null
-        def extension = project.extensions.getByName("reachability")
-        extension.getFormats().get() == "json,junitxml"
-        !extension.getCha().get()
-        !extension.getPointerAnalysis().get()
-        extension.getEntryPoints().get().isEmpty()
-        extension.getCallbackInterfaces().get().isEmpty()
+        then: "the extension and task exist with the documented defaults"
+        dump.get("task.exists") == "true"
+        dump.get("extension.exists") == "true"
+        dump.get("extension.formats") == "json,junitxml"
+        dump.get("extension.cha") == "false"
+        dump.get("extension.pointerAnalysis") == "false"
+        dump.get("extension.entryPoints") == "[]"
+        dump.get("extension.callbackInterfaces") == "[]"
 
         and: "the task is wired to the main source set output and the runtime classpath"
-        def task = project.tasks.getByName("checkReachability")
-        task.dependsOn.any { it instanceof Provider
-                ? it.get().name == JavaPlugin.COMPILE_JAVA_TASK_NAME
-                : it == JavaPlugin.COMPILE_JAVA_TASK_NAME }
-        task.getClasspathJars().files.containsAll(project.configurations.getByName("runtimeClasspath").files)
-        task.getAppClasses().get().asFile.absolutePath ==
-                project.sourceSets.getByName("main").output.classesDirs.iterator().next().absolutePath
-        task.getGroup() == "verification"
+        dump.get("task.dependsOn") == "[compileJava]"
+        dump.get("task.classpathJars").split("|").toList().containsAll(dump.get("runtimeClasspath").split("|").toList())
+        dump.get("task.appClasses") == dump.get("mainClasses")
+        dump.get("task.group") == "verification"
     }
 
     def "given a project without the java plugin when the reachability plugin is applied then a clear error"() {
         given:
-        Project project = ProjectBuilder.builder().build()
+        FixtureProject fixture = FixtureProject.withoutJavaPlugin(projectDir)
 
         when:
-        project.plugins.apply(ReachabilityPlugin)
+        BuildResult result = fixture.runFailing("help", "--stacktrace")
 
         then: "Gradle wraps the plugin application failure; the cause carries the clear message"
-        def e = thrown(Exception)
-        e.cause instanceof IllegalStateException
-        e.cause.message.contains("java plugin")
+        result.output.contains("java.lang.IllegalStateException")
+        result.output.contains("java plugin")
     }
 
     def "given the task class when it is inspected then the cacheable and content-sensitive input pins hold"() {
@@ -84,21 +90,21 @@ class ReachabilityPluginSpec extends Specification {
 
     def "given the extension when the task is realized then the maxHeapSize default and values reach the task"() {
         given:
-        Project project = ProjectBuilder.builder().build()
-        project.plugins.apply(JavaPlugin)
+        FixtureProject defaultFixture = FixtureProject.withJavaPlugin(projectDir.resolve("default"), "")
+        FixtureProject configuredFixture =
+                FixtureProject.withJavaPlugin(projectDir.resolve("configured"), "reachability {\n    maxHeapSize = '2g'\n}\n")
 
-        when:
-        project.plugins.apply(ReachabilityPlugin)
-        def task = project.tasks.getByName("checkReachability")
+        when: "the default is dumped"
+        Map<String, String> defaultDump = defaultFixture.wiringDump()
 
         then: "the convention is 1g"
-        task.getMaxHeapSize().get() == "1g"
+        defaultDump.get("task.maxHeapSize") == "1g"
 
         when: "the user sets a value"
-        project.extensions.getByName("reachability").getMaxHeapSize().set("2g")
+        Map<String, String> configuredDump = configuredFixture.wiringDump()
 
         then:
-        task.getMaxHeapSize().get() == "2g"
+        configuredDump.get("task.maxHeapSize") == "2g"
     }
 
     def "given the work action class when it is inspected then the 9.8 worker parameter contract holds"() {
@@ -114,29 +120,28 @@ class ReachabilityPluginSpec extends Specification {
 
     def "given extension values when the task is realized then they reach the task inputs"() {
         given:
-        Project project = ProjectBuilder.builder().build()
-        project.plugins.apply(JavaPlugin)
+        FixtureProject fixture = FixtureProject.withJavaPlugin(projectDir,
+                "reachability {\n" +
+                        "    osvDir = 'osv-maven'\n" +
+                        "    bomFile = 'build/cyclonedx/bom.json'\n" +
+                        "    expectedOsvChecksum = '0123456789abcdef0123456789abcdef0123456789abcdef'\n" +
+                        "    mappings = 'vuln-mappings.json'\n" +
+                        "    pointerAnalysis = true\n" +
+                        "    formats = 'json'\n" +
+                        "    entryPoints.add('demo.Main#main')\n" +
+                        "}\n")
 
         when:
-        project.plugins.apply(ReachabilityPlugin)
-        def extension = project.extensions.getByName("reachability")
-        extension.getOsvDir().set("osv-maven")
-        extension.getBomFile().set("build/cyclonedx/bom.json")
-        extension.getExpectedOsvChecksum().set("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-        extension.getMappings().set("vuln-mappings.json")
-        extension.getPointerAnalysis().set(true)
-        extension.getFormats().set("json")
-        extension.getEntryPoints().add("demo.Main#main")
-        def task = project.tasks.getByName("checkReachability")
+        Map<String, String> dump = fixture.wiringDump()
 
         then:
-        task.getOsvDir().get() == "osv-maven"
-        task.getBomFile().get() == "build/cyclonedx/bom.json"
-        task.getExpectedOsvChecksum().get() == "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-        task.getMappings().get() == "vuln-mappings.json"
-        task.getPointerAnalysis().get()
-        !task.getCha().get()
-        task.getFormats().get() == "json"
-        task.getEntryPoints().get() == ["demo.Main#main"]
+        dump.get("task.osvDir") == "osv-maven"
+        dump.get("task.bomFile") == "build/cyclonedx/bom.json"
+        dump.get("task.expectedOsvChecksum") == "0123456789abcdef0123456789abcdef0123456789abcdef"
+        dump.get("task.mappings") == "vuln-mappings.json"
+        dump.get("task.pointerAnalysis") == "true"
+        dump.get("task.cha") == "false"
+        dump.get("task.formats") == "json"
+        dump.get("task.entryPoints") == "[demo.Main#main]"
     }
 }

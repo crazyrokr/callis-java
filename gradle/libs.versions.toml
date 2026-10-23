@@ -23,6 +23,10 @@ sootup-spark = { module = "org.soot-oss:sootup.spark", version.ref = "sootup" }
 spock-core = { module = "org.spockframework:spock-core", version.ref = "spock" }
 groovy = { module = "org.apache.groovy:groovy", version.ref = "groovy" }
 groovy-bom = { module = "org.apache.groovy:groovy-bom", version.ref = "groovy" }
+groovy-ant = { module = "org.apache.groovy:groovy-ant", version.ref = "groovy" }
+groovy-json = { module = "org.apache.groovy:groovy-json", version.ref = "groovy" }
+groovy-templates = { module = "org.apache.groovy:groovy-templates", version.ref = "groovy" }
+groovy-xml = { module = "org.apache.groovy:groovy-xml", version.ref = "groovy" }
 spotbugs-tool = { module = "com.github.spotbugs:spotbugs", version.ref = "spotbugs" }
 
 [plugins]
