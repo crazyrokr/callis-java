@@ -4,8 +4,8 @@ jackson = "2.22.4"
 picocli = "4.7.7"
 mavenArtifact = "3.10.0"
 sootup = "3.0.1"
-spock = "2.4-groovy-4.0"
-groovy = "4.0.33"
+spock = "2.5-groovy-6.0"
+groovy = "6.0.0"
 checkstyle = "14.3.0"
 jacoco = "0.8.15"
 spotbugs = "4.10.5"
@@ -23,6 +23,10 @@ sootup-spark = { module = "org.soot-oss:sootup.spark", version.ref = "sootup" }
 spock-core = { module = "org.spockframework:spock-core", version.ref = "spock" }
 groovy = { module = "org.apache.groovy:groovy", version.ref = "groovy" }
 groovy-bom = { module = "org.apache.groovy:groovy-bom", version.ref = "groovy" }
+groovy-ant = { module = "org.apache.groovy:groovy-ant", version.ref = "groovy" }
+groovy-json = { module = "org.apache.groovy:groovy-json", version.ref = "groovy" }
+groovy-templates = { module = "org.apache.groovy:groovy-templates", version.ref = "groovy" }
+groovy-xml = { module = "org.apache.groovy:groovy-xml", version.ref = "groovy" }
 spotbugs-tool = { module = "com.github.spotbugs:spotbugs", version.ref = "spotbugs" }
 
 [plugins]
