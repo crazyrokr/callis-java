@@ -6,7 +6,7 @@ mavenArtifact = "3.10.0"
 sootup = "3.0.1"
 spock = "2.5-groovy-6.0"
 groovy = "6.0.0"
-checkstyle = "14.3.0"
+checkstyle = "14.4.0"
 jacoco = "0.8.16"
 spotbugs = "4.10.5"
 
