@@ -2,7 +2,7 @@
 [versions]
 jackson = "2.23.0"
 picocli = "4.7.7"
-mavenArtifact = "3.10.0"
+mavenArtifact = "3.10.1"
 sootup = "3.0.1"
 spock = "2.5-groovy-6.0"
 groovy = "6.0.0"
